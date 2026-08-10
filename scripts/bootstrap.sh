@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 #
-# Python bootstrap for an evaluation run on a Server4Agent box.
+# Python bootstrap for an evaluation run.
 #
-# The box has python3 but no pip and no venv module, and its system Python is
-# PEP-668 externally managed, so installing into site-packages is refused
-# outright. A virtualenv is the honest way past that: it needs no
-# --break-system-packages, it leaves the system Python alone, and it persists in
-# the workspace so a second run costs seconds instead of minutes.
+# A virtualenv rather than a system install, because a system Python is often
+# PEP-668 externally managed and refuses site-packages writes outright. A venv
+# sidesteps that honestly: no --break-system-packages, the system Python left
+# alone, and it persists so a second run costs seconds instead of minutes.
 #
-# Idempotent, and safe to run on a laptop: the apt branch skips itself wherever
-# a working pip already exists.
+# Idempotent. The apt branch exists for bare containers that ship python3 with
+# neither pip nor venv, and skips itself wherever a working pip already exists,
+# which on a developer machine is always.
 #
 # Usage:
 #   bash bootstrap.sh                 # installs requirements.txt if present

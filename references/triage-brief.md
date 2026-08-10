@@ -1,15 +1,14 @@
 # Brief: triage an evaluation analysis against this code, then fix the code
 
-You are working inside a clone of a repo that holds an AI agent and the harness
-that evaluates it. An evaluation was run, a judge scored the answers, and the
-resulting analysis export is in this workspace. Your job is to turn that export
-into the right code changes.
+You are working inside a repo that holds an AI agent and the harness that
+evaluates it, scored by a local AgentX self-host engine (normally
+`http://localhost:4700`). An evaluation was run, a judge scored the answers, and
+the resulting analysis export is under `eval-analysis/exports/`. Your job is to
+turn that export into the right code changes.
 
-You have no memory of any previous session, and everything you need is in this
-file and in the repo. There is also no way to ask a question and get an answer:
-this run has no interactive channel, so a question just ends the run with nothing
-done. Where something is genuinely ambiguous, make the most defensible call,
-apply it, and record the uncertainty in the mapping table.
+Everything you need is in this file and in the repo. Where something is genuinely
+ambiguous, make the most defensible call, apply it, and record the uncertainty in
+the mapping table rather than stopping on it.
 
 Work through the phases in order. Do not start editing code before Phase 3.
 
@@ -45,8 +44,8 @@ than planning to come back.
 
 1. **The analysis export**, under `eval-analysis/exports/`. Usually there is one
    `.md` file there and it is the one you want. Read it in full. Its filename
-   contains the evaluation id in the form `..._analysis_<EVAL_ID>_<date>.md`;
-   call that `<EVAL_ID>`, you will need it for output filenames. Pay particular
+   contains the evaluation id in the form `analysis_<EVAL_ID>.md`; call that
+   `<EVAL_ID>`, you will need it for output filenames. Pay particular
    attention to the numbered recommendations, the judge evidence section (which
    quotes real answers with the judge's reasoning, and is the most
    information-dense part of the document), and the statistics.
@@ -62,21 +61,46 @@ than planning to come back.
    If none of them matches this repo, that is the finding. Say so at the top of
    the mapping table, treat every recommendation as `reject-wrong-premise`, and
    fix only what you can verify from the source.
+
+   **An export with no numbered recommendations is not a broken export.** On
+   AgentX self-host nothing generates an analysis until a human asks for one, so
+   a run can be complete, fully rated, and carry no narrative at all — the export
+   says `Analysis status: not_started`. Everything else is still there: the
+   stored per-result ratings, the judge's per-answer justification, the rubric,
+   the similarity metrics and the code-scorer results. Table 1 is then empty by
+   fact rather than by omission — say so in one line at the top — and Table 2,
+   the defects the report could not see, becomes the whole deliverable. Do not
+   run the analysis yourself to fill Table 1; that is a spend decision and it is
+   not yours to make from inside this brief.
 2. **The agent's source.** Find where the agent is defined and read it: its
    instruction string, its tools, its knowledge or retrieval setup, its model
    configuration.
 3. **The rubric: acceptance criteria, rejection criteria, evaluation criteria,
-   and any per-case judge guidance.** These are what the answers were graded
-   against, and a change that fights them lowers the score no matter how sensible
-   the recommendation that motivated it sounded. The judge that wrote the report
-   could see them; the report itself does not quote them.
+   per-case judge guidance, the judge prompt and model, and any code scorers.**
+   These are what the answers were graded against, and a change that fights them
+   lowers the score no matter how sensible the recommendation that motivated it
+   sounded. The judge that wrote the report could see them; the report itself
+   does not quote them.
 
    If the export has a **Grading criteria** section, that is the rubric
-   first-hand, taken from the dataset. Use it.
+   first-hand. Use it, and read its labels rather than skimming the strings.
 
-   If it does not, the export was rendered without those fields and you have to
-   recover them from the repo: find the script that runs the evaluation and read
-   the criteria it publishes. That works when the dataset is defined in code.
+   **The rubric comes from two objects, not one.** The criteria come from the
+   run's grading config, which may be a standalone one that overrides the
+   dataset's own criteria entirely; `expectedResults` and `judgeGuideline` always
+   come from the dataset's questions regardless. The export says which supplied
+   which, and prints the dataset's overridden criteria under a heading that says
+   they did *not* grade this run. Triaging against those is triaging against a
+   rubric the judge never saw.
+
+   The **code scorers** are part of the rubric too, and unlike the criteria they
+   are deterministic: real code, executed against every answer, producing a score
+   you can reproduce by hand. A scorer returning 0 on the low-rated answers is
+   the most checkable evidence in the whole export.
+
+   If the export has no grading section, recover what you can from the repo: find
+   the script that runs the evaluation and read the criteria it publishes. That
+   works when the dataset is defined in code.
 
    **Two places, one look each, then stop.** If neither the export nor the
    harness has the criteria, they are not recoverable from here and no amount of
@@ -288,9 +312,12 @@ comparable and the whole exercise produces nothing.
 In practice, leave alone:
 
 - **The grading surface.** The test questions, the expected results, the
-  acceptance / rejection / evaluation criteria, any per-case judge guidance, and
-  the number of runs per question. These define what "good" means. Changing them
-  and then reporting a higher score is measuring a different thing.
+  acceptance / rejection / evaluation criteria, any per-case judge guidance, the
+  number of runs per question, the judge prompt, the judge model, the enabled
+  similarity metrics and every code scorer. These define what "good" means.
+  Changing them and then reporting a higher score is measuring a different thing.
+  The judge model is the one people forget: swapping it re-scores the same
+  answers on a different scale, and nothing in the run records that it happened.
 - **The tool inventory.** Do not add or remove tools. Runs commonly record a tool
   count in their metadata, so a changed inventory confounds the comparison
   directly. If your triage genuinely concluded a tool is missing, record it in
@@ -383,62 +410,119 @@ tends to produce padded answers, which is often one of the things being fixed.
 ### Add a reporting tail to the harness
 
 The harness probably prints little at the end. A comparison needs numbers. Add
-prints for: the dataset id the run actually used, number of runs, average score,
-min and max, spread, consistency, overall rating, instruction adherence, the run
-id, and each of the new report's own recommendations.
+prints for: the base URL and the dataset id the run actually used, the run id,
+the rated count, the average, min and max, and every stored per-result rating.
 
-Print the dataset id because it makes the log prove, by itself, that the run
-scored against the intended dataset. That is the single most expensive thing to
-get wrong here, and one line removes the doubt.
+Print the base URL and the dataset id because together they make the log prove,
+by itself, that the run scored against the intended dataset on the intended
+engine. Those are the two most expensive things to get wrong here, and two lines
+remove the doubt.
 
-If the report object exposes no variance field, use max minus min as the spread
-and label it as a substitute rather than presenting it as the same statistic.
-
-Print the per-result ratings too, not only the report's summary statistics. On
-this platform the two disagree, sometimes by several points, and the per-result
-values are the ones that match what the answers actually scored.
-
-The exact attribute names are in `server4agent-runtime.md`, alongside this file
-in the skill's `references/` directory, under "Reading the evaluation SDK's
-report object". Use those names rather than guessing: a wrong attribute name is
-an exception thirty minutes into the next run, after the money has been spent.
-
-**The method you want for the stored ratings is not on the object you first
-reach for.** `client.evaluations` is a runner, and it exposes only the methods
-for starting a run. `get_run` and `get_report` live on the client it wraps.
-Reach for them like this, so the tail keeps working if the SDK later promotes
-them:
+**Read the tail's numbers over HTTP, from the dashboard route.** The SDK is fine
+for running the evaluation and is the wrong tool for reading it back: its
+`get_run()` returns a summary with no minimum, no maximum and no per-result
+array, and its `get_report()` route does not exist on self-host at all.
 
 ```python
-runner = client.evaluations
-reports = runner if hasattr(runner, "get_run") else runner._client
-run = reports.get_run(run_id)
-# get_run returns a plain dict, not a model object, so read it by key:
-stats = run["liveStatistics"]   # averageRating, minRating, maxRating, ratedCount
+import json, os, urllib.request
+
+base = os.environ["AGENTX_API_BASE_URL"].rstrip("/")        # http://localhost:4700/api/v1
+req = urllib.request.Request(f"{base}/evaluate/{run_id}")
+req.add_header("x-api-key", os.environ["AGENTX_API_KEY"])
+with urllib.request.urlopen(req, timeout=30) as resp:
+    run = json.load(resp)
+
+stats = run["liveStatistics"]        # averageRating, minRating, maxRating, ratedCount
+for r in run["results"]:             # rating, justification, questionText,
+    ...                              # expectedResults, codeScorerResults, similarity
 ```
 
-Two separate triages wrote `client.evaluations.get_run(...)` and both were
-wrong. Neither crashed, because each had wrapped the lookup in a bare `except`
-that fell back to the report's summary statistics. That is the worst possible
-outcome: a full run's worth of spend, a report that looks complete, and the
-numbers silently taken from the source this whole workflow exists to avoid.
+`liveStatistics` is recomputed from the stored ratings on every read, so it is
+the authoritative number and needs no cross-check against anything else.
 
-So do not wrap the ratings lookup in a bare `except`. If it cannot read them,
-the tail should say so loudly in the log. And verify the accessor before you
-commit, which costs nothing and needs no run:
+**Do not wrap that lookup in a bare `except`.** If it cannot read the ratings,
+the tail must say so loudly in the log. Two separate triages hid this lookup
+behind a bare `except` that fell back to a summary statistic, and both produced
+the worst possible outcome: a full run's worth of spend, a report that looks
+complete, and the numbers silently taken from the source this whole workflow
+exists to avoid.
+
+**Take `.analyze()` out of the harness if it is there.** On self-host it posts to
+a route the engine does not implement and 404s. It does not raise — the SDK
+catches the 404, catches the follow-up `get_report()` failure, and prints an
+empty report with no statistics and no recommendations, which reads exactly like
+an evaluation that scored nothing. The analysis is a separate, synchronous call
+to `/evaluate/analyze/{run_id}` on the dashboard router, and the eval brief runs
+it as its own phase. Leaving a dead `.analyze()` in the harness costs nothing but
+guarantees the next reader misdiagnoses a healthy run.
+
+Verify the accessor before you commit, which costs nothing and needs no run:
 
 ```bash
-python3 -c "
-from dotenv import load_dotenv; load_dotenv()
-from agentx import AgentX
-r = AgentX.from_env().evaluations
-print('runner:', hasattr(r, 'get_run'), ' wrapped:', hasattr(r._client, 'get_run'))
-"
+curl -s "$AGENTX_API_BASE_URL/evaluate/list?limit=1" -H "x-api-key: $AGENTX_API_KEY" \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['evaluations'][0]['liveStatistics'])"
 ```
 
-`load_dotenv()` is not optional there. `AgentX.from_env()` raises
-`AgentXAuthError` without the key, and a one-liner that omits it fails for a
-reason that has nothing to do with the thing you were checking.
+### Attach a trace to every result
+
+If the harness does not already do this, add it. A result row has a `traceId`
+field, and when it is empty a low score tells you *that* the answer was bad with
+no way to see what the agent did to produce it — which tool it called, what came
+back, how many turns it took. That is most of what a triage wants and it costs
+one wrapper to capture.
+
+The callable has to return the trace id, and the trace has to be sent on this
+thread for the id to exist by the time it returns:
+
+```python
+from agentx.integrations.langchain import AgentXCallbackHandler
+
+def run_case(case):
+    handler = AgentXCallbackHandler(client.tracer, name="my-agent")
+    with client.tracer.trace(
+        "my-agent",
+        input={"query": case.query},
+        framework="langchain",
+        model=MODEL,
+        sync=True,
+    ) as span:
+        state = agent.invoke(
+            {"messages": [{"role": "user", "content": case.query}]},
+            config={"callbacks": [handler]},
+        )
+        span.output = state["messages"][-1].content
+    return {
+        "output": span.output,
+        "trace_id": span.trace_id,
+        "input_tokens": span._input_tokens or None,
+        "output_tokens": span._output_tokens or None,
+    }
+```
+
+Three things about that shape are load-bearing:
+
+- **`sync=True`.** The default is fire-and-forget on a background thread, which
+  never learns the trace id. Without it `span.trace_id` is `None` and every
+  result stores an empty `traceId` while appearing to work.
+- **Open the span yourself, and also pass the handler.** The handler checks
+  `tracer.current_span` and folds its LLM and tool spans into an already-open
+  span instead of emitting a separate trace. Pass the handler alone and you get
+  a trace with no id you can attach; open the span alone and you get an id with
+  no timeline under it. Both together give one trace per case, carrying the
+  whole execution timeline, linked to the score.
+- **Token counts come off the merged run**, not from the model response, so read
+  them from the span. They populate the result's own token columns, which are
+  separate from the trace.
+
+The integration is per framework — `agentx.integrations.langchain`,
+`.crewai`, `.llamaindex`, `.anthropic` and others; a bare OpenAI client uses
+`patch_openai_client(oai, client.tracer)` instead, and a hand-rolled tool loop
+records its tools with `client.tracer.trace_tool_call(name, input=...)`. Call
+`client.tracer.flush(timeout=10)` before the process exits.
+
+**Adding tracing does not break the comparison.** It changes what is recorded,
+not what the agent says: same model, same prompt, same tools. Say so in the
+mapping table rather than leaving a reviewer to wonder.
 
 ### Update the README
 
@@ -475,7 +559,7 @@ git status --porcelain
 ```
 
 Read that `git status --porcelain` output before committing. If it shows anything
-under a virtualenv directory, `__pycache__/`, `.env`, or `.server4agent/`,
+under a virtualenv directory, `__pycache__/`, `.env`, or `.eval-logs/`,
 unstage it. Use explicit paths rather than `git add -A`: a bootstrap step in the
 next run creates a virtualenv in this directory, and an `-A` habit formed here is
 how a few hundred megabytes end up in the history.
@@ -492,20 +576,15 @@ Rejected: <one line per rejected recommendation, with the reason>
 Mapping table: eval-analysis/mapping-<EVAL_ID>.md
 ```
 
-Push with the run's git credential, taking owner and repo from
-`git remote get-url origin`:
+Then push the branch:
 
 ```bash
-git push "https://x-access-token:$S4A_GIT_TOKEN@github.com/<owner>/<repo>.git" HEAD:eval-fix/<EVAL_ID>
+git push -u origin HEAD
 ```
 
-The `x-access-token` username is required; the token alone as the username does
-not authenticate. Never write the token into a file, a commit, a remote, or a
-command you echo.
-
-If the push is refused because the credential is read-only, that is a reportable
-outcome and not a failure. The commit exists locally and is fully inspectable.
-Say so in the final block and carry on, and skip the pull request below.
+If the push is refused, that is a reportable outcome and not a failure. The
+commit exists locally and is fully inspectable. Say so in the final block and
+carry on, and skip the pull request below.
 
 ### Open a pull request
 
@@ -513,40 +592,21 @@ A pushed branch is easy to lose track of. A pull request puts the mapping table
 in front of a reviewer with the diff attached, which is where this work wants to
 end up.
 
-Use whichever of these is available. `gh` is usually present on a developer
-machine and usually absent on a hosted box, so try it and fall back:
-
 ```bash
 gh pr create --base "$(git remote show origin | sed -n 's/.*HEAD branch: //p')" \
   --head "eval-fix/<EVAL_ID>" --title "..." --body-file <file>
 ```
 
-Without `gh`, the same thing over the REST API, which needs only `curl` and the
-token you just pushed with:
-
-```bash
-curl -sS -X POST \
-  -H "Authorization: Bearer $S4A_GIT_TOKEN" \
-  -H "Accept: application/vnd.github+json" \
-  "https://api.github.com/repos/<owner>/<repo>/pulls" \
-  -d "$(python3 -c 'import json,sys; print(json.dumps({
-        "title": sys.argv[1], "head": sys.argv[2], "base": sys.argv[3],
-        "body": open(sys.argv[4]).read()}))' "<title>" "eval-fix/<EVAL_ID>" "<base>" <body file>)"
-```
-
-Build the JSON with a real serializer rather than string interpolation: the body
-contains a markdown table full of quotes and backticks, and hand-built JSON will
-break on it.
+Pass the body as a file rather than a string. It contains a markdown table full
+of quotes and backticks, and shell quoting will mangle it.
 
 Title it after what was actually done, not after the eval id. The body should
 lead with the applied and rejected counts, link the mapping table by path, and
 carry any `RUBRIC-CONFORMING` rows near the top, since those are the only thing
 the reviewer must check personally.
 
-The response JSON has an `html_url`. Report it. If the call fails, report the
-status and the branch name, and do not retry blindly: a 403 usually means the
-credential has no pull-request scope, and a 422 usually means the branch has no
-commits the base does not already have.
+Report the URL `gh` prints. If it fails or is not installed, report that with the
+branch name and stop there rather than improvising another route.
 
 ## Phase 6: the report
 

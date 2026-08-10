@@ -1,19 +1,19 @@
 ---
 name: agentx-eval-fix
 description: >-
-  Turn an AgentX evaluation analysis into a triaged code fix and a re-run against
-  the same dataset, either locally against a checked-out repo or on a Server4Agent
-  box. Use this whenever someone has an AgentX analysis export, evaluation report,
-  judge findings or a scored eval run and wants to know what to actually change in
-  the code, or wants to re-run an evaluation to compare before-and-after scores.
-  Also use when a request mentions AgentX dataset ids or evaluation ids, an agent
-  that scored badly, hallucination or grounding findings from an LLM judge, or the
-  question "the report tells me what is wrong with the answers but not what to fix
-  in my code". The core move is triaging code-blind judge recommendations against
-  the real source instead of applying them literally.
+  Turn an AgentX self-host evaluation into a triaged code fix and a re-run against
+  the same dataset, so a before-and-after comparison means something. Use whenever
+  someone has an evaluation on a local AgentX self-host engine (AgentX-trace-eval,
+  normally http://localhost:4700) and wants to know what to actually change in the
+  code, or wants to re-run an evaluation to compare scores. Also use when a request
+  mentions a self-host evaluation id or dataset id, an agent that scored badly, an
+  AI Analysis or judge findings from the Evaluate tab, or the question "the report
+  tells me what is wrong with the answers but not what to fix in my code". The core
+  move is triaging code-blind judge recommendations against the real source instead
+  of applying them literally.
 ---
 
-# Fix an agent from its evaluation report, then re-score it
+# Fix an agent from its evaluation, then re-score it
 
 An AgentX analysis tells you what was wrong with an agent's *answers*. It cannot
 tell you what to change in the code, because the judge that wrote it never saw
@@ -25,6 +25,11 @@ other.
 The report is not a to-do list. On a real export, two of five recommendations
 asked for things that already existed in the repo, and a third would have lowered
 the score. Treat its evidence as reliable and its recommendations as hypotheses.
+
+**This targets AgentX self-host only** — the local engine from AgentX-trace-eval,
+listening on `http://localhost:4700` by default. Its API is a different dialect
+from the hosted platform's, and several of the endpoints the hosted flow depends
+on do not exist here. Everything below is written against the local one.
 
 ## Start here
 
@@ -40,60 +45,109 @@ the brief:
 Each brief is self-contained and written to be executed in order. Nothing else on
 this page applies to you.
 
-**If you are driving a Server4Agent project from outside**, read
-`references/orchestration.md`. It covers equipping the project, secrets, staging,
-and the two prompts.
+**Otherwise**, the rest of this page is for you.
 
-**Otherwise the repo is on this machine**, and the rest of this page is for you.
+## Connect to the engine
 
-## Where the analysis comes from
+Two values, and both have a default worth knowing.
 
-| You have | Use | Notes |
-|---|---|---|
-| An evaluation id and API access | `scripts/fetch_analysis.py <id> --write-export <dir>` | **Preferred.** Includes the grading criteria |
-| A downloaded `.md` export | `scripts/parse_export.py <file>` | Works with no API access |
+```bash
+python3 <skill>/scripts/fetch_analysis.py --list
+```
 
-Both emit the same JSON, so everything after this point is identical.
+That is the whole connection test. It resolves the base URL from
+`$AGENTX_API_BASE_URL`, falling back to `http://localhost:4700/api/v1`, and the
+key from `$AGENTX_API_KEY`, falling back to `GET /dev/bootstrap` on the engine
+itself. If it prints evaluations, you are connected.
 
-Prefer fetching when you can. The dashboard export is rendered in the browser and
-leaves out `acceptance_criteria`, `rejection_criteria`, `evaluation_criteria` and
-the per-case `judge_guideline`. Those four strings are the rubric the answers were
-scored against, and they are the difference between a triage that catches a
-harmful recommendation and one that applies it. The dataset API has all four.
+Three things about this that cost a run each when assumed wrong:
 
-If you only have the export, the triage can usually recover the rubric by reading
-the evaluation harness in the repo, which is why the brief tells it to. That works
-when the harness defines the dataset in code. It fails silently when the dataset
-was published from somewhere else.
+- **Keys are per project, and so is the data.** The key *is* the project
+  selector; an evaluation belongs to exactly one project and is a 404 under
+  every other key. `curl -s http://localhost:4700/api/v1/projects` lists them all
+  with their keys. `/dev/bootstrap` only ever hands back the Default project's.
+- **`~/.agentx/config.json` can be a different engine's key.** It records
+  whichever engine last ran on this machine. A Docker instance keeps its database
+  in its own volume and mints its own keys, so the file and the port disagree the
+  moment anyone runs the container. That failure reads as a 401, not as a stale
+  file. Prefer `/dev/bootstrap`, which asks the engine actually listening.
+- **Ids are nanoids**, e.g. `oE1YMG5wqmu4j2bhTtw1X`, not the 24-character hex ids
+  the hosted platform uses. There is no filename to read one out of, so `--list`
+  is how you find one.
 
-## Local mode
+## Getting the analysis
+
+```bash
+python3 <skill>/scripts/fetch_analysis.py <evaluation_id> \
+  --write-export <repo>/eval-analysis/exports/
+```
+
+This writes the markdown the triage brief reads, and prints the same data as JSON
+on stdout. Show the user the baseline numbers and the count of recommendations
+before going further. That is the shape of the job.
+
+### An evaluation has no analysis until someone asks for one
+
+This is the one structural difference from the hosted platform. There, a finished
+run has a report waiting. Here, `analysis` is absent until the Analyze button is
+pressed or something calls the endpoint, and a fresh run reports
+`analysis_status: not_started`.
+
+```bash
+python3 <skill>/scripts/fetch_analysis.py <evaluation_id> --analyze \
+  --write-export <repo>/eval-analysis/exports/
+```
+
+**Ask before you pass `--analyze`.** It is a real judge pass — every sampled item
+re-rated by up to three judges, then one more call to write the narrative — billed
+to whichever provider key the engine holds. It also needs that key to exist:
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` in the engine's
+environment, or set from the dashboard's Platform Settings. Without one it fails
+with a 422 naming the missing key.
+
+Analyze is **synchronous** here — no job queue, no polling. The HTTP call holds
+open for the whole pass and comes back already finished.
+
+**A triage without an analysis is still worth doing.** The stored per-result
+ratings, the rubric, the judge's per-answer justifications, the similarity metrics
+and the code-scorer results are all on the run regardless. What you lose is the
+numbered recommendations, which is to say the part of the report this skill exists
+to be sceptical of. Table 2 of the mapping table — defects the report could not
+see — does not depend on it at all.
+
+### Which rubric actually graded the run
+
+Self-host splits the grading surface across two objects, and reading the wrong one
+is how a triage rejects a good recommendation.
+
+- **The criteria** come from the run's `evaluationSettings`. If the run named a
+  standalone grading config, that config's criteria apply and the dataset's own
+  criteria were never consulted.
+- **`expectedResults` and `judgeGuideline`** always come from the dataset's
+  questions, whichever config supplied the criteria.
+- **The judge prompt and judge model** live only on the grading config.
+
+`fetch_analysis.py` resolves this for you and labels the export's Grading criteria
+section with where each half came from, printing the dataset's overridden criteria
+separately when they differ. If you read the criteria off the dataset by hand,
+check that first.
+
+## Local workflow
 
 ### 1. Get the analysis into the repo
 
 ```bash
-# From an evaluation id (preferred)
 python3 <skill>/scripts/fetch_analysis.py <evaluation_id> \
   --write-export <repo>/eval-analysis/exports/
-
-# Or from a file you downloaded
-mkdir -p <repo>/eval-analysis/exports
-cp <export.md> <repo>/eval-analysis/exports/
-python3 <skill>/scripts/parse_export.py <export.md>
 ```
-
-Show the user the baseline numbers and the count of recommendations before going
-further. That is the shape of the job.
 
 ### 2. Do the triage
 
 Read `references/triage-brief.md` and carry it out yourself, against the repo,
-with the repo as your working directory. One substitution, since that brief is
-also used on a box: where it says to push with `$S4A_GIT_TOKEN`, locally that is
-just `git push -u origin <branch>`.
+with the repo as your working directory.
 
-Everything else applies unchanged, including the parts that matter most: write the
-mapping table before touching any code, keep the frozen surfaces frozen, and do
-not run the evaluation during the triage.
+The parts that matter most: write the mapping table before touching any code,
+keep the frozen surfaces frozen, and do not run the evaluation during the triage.
 
 ### 3. Stop and show the mapping table
 
@@ -101,44 +155,25 @@ not run the evaluation during the triage.
 checkpoint of the whole workflow. Everything up to here was free; the next step
 is not.
 
-If a run reports nothing at all, look for the work rather than assuming there is
-none. The summary is also written to `eval-analysis/triage-report-<EVAL_ID>.md`,
-and the mapping table itself is written before any code is touched, so a run that
-died partway through still leaves both. A run that hit its turn limit and a run
-that did nothing look identical from the outside until you go and check.
-
 ### 4. Re-run the evaluation
 
-Read `references/eval-brief.md` and carry it out. Locally you can run in the
-foreground, since there is no 30 minute run ceiling, but keep these because they
-are not about the box:
+Read `references/eval-brief.md` and carry it out. Two things there are worth
+repeating because they are the expensive failures:
 
-- **Check the dataset id before launching.** This is the one failure that costs
-  full price and produces a plausible number for a different question.
-- Delete any stray `.env` that came from a committed example file.
-- Report the minimum score alongside the average, and state the noise floor.
+- **Check the dataset id and the base URL before launching.** A harness handed no
+  dataset id publishes a brand new one and scores against freshly created
+  questions; a harness with `AGENTX_API_BASE_URL` unset talks to the hosted
+  platform instead of your engine. Neither errors.
+- **The SDK's `.analyze()` does not work against self-host.** It posts to a route
+  the engine does not implement. Use the engine's own analyze endpoint, or
+  `fetch_analysis.py --analyze`.
 
-`scripts/bootstrap.sh` works locally too: it skips its `apt` branch wherever a
-working pip already exists, and builds a virtualenv from `requirements.txt`, a
+`scripts/bootstrap.sh` builds a virtualenv from `requirements.txt`, a
 `pyproject.toml`, or packages you name on the command line.
-
-### Worked example
-
-For a Python agent at `~/code/my-agent` with an export in `~/Downloads`:
-
-```bash
-mkdir -p ~/code/my-agent/eval-analysis/exports
-cp ~/Downloads/*_analysis_*.md ~/code/my-agent/eval-analysis/exports/
-python3 ~/.claude/skills/agentx-eval-fix/scripts/parse_export.py \
-  ~/code/my-agent/eval-analysis/exports/*_analysis_*.md
-```
-
-Then work in `~/code/my-agent`, follow the triage brief, and stop at the mapping
-table.
 
 ## Reading the mapping table
 
-The checkpoint, in every mode. In order:
+The checkpoint. In order:
 
 - Does every recommendation have a verdict? A skipped row is an unexamined claim.
 - Are the rejections evidenced with a file and line, or just asserted?
@@ -163,19 +198,25 @@ matters, a second pass is cheap.
 
 ## Reporting results
 
-Three things worth saying out loud regardless of what the numbers did:
-
 - **The minimum matters at least as much as the average.** A low minimum means
   some questions fail badly and unpredictably, which is a different problem from a
   uniformly mediocre mean and usually the one that grounding fixes.
 - **No individual change can be credited.** A single pass applies everything at
   once. Per-change attribution costs one run per change, and it is worth naming as
   an option rather than implying the data supports a story it does not.
-- **Read the scores from the stored per-result ratings**, not the report's
-  summary statistics. The two disagree on this platform, and the summary has
-  understated every run measured so far.
+- **Read the scores from `liveStatistics`** on `GET /api/v1/evaluate/<run_id>`.
+  It is recomputed from the stored per-result ratings on every read. The
+  analysis's own `statistics` block is computed the same way, so the two agree —
+  unless results landed after Analyze ran, in which case the analysis is stale and
+  `fetch_analysis.py` says so in the export.
+- **`ratingVariance` is a real field here**, on the analysis statistics. Report it
+  rather than substituting max-minus-min.
 - **State the noise floor.** If the first run's judge scored structurally similar
   answers several points apart, a smaller movement in the average is not a result.
+- **The multi-judge `finalScore` is not the score.** Analyze re-rates a sample of
+  answers with fresh judges purely to measure agreement. Those numbers sit beside
+  the stored ratings and are not what the run was scored on; a `split`
+  disagreement band marks an ambiguous rubric, not a bad answer.
 
 ## Adapting the briefs
 
@@ -186,6 +227,7 @@ when editing them.
 
 The one principle they turn on, and the one to keep if anything else is cut:
 **freeze anything the comparison is keyed on.** The test questions, the grading
-criteria, the tool inventory, the knowledge base and the model all have to be
-identical across the two runs. Change any of them and the second number is not
-comparable to the first, which is the only reason the second run exists.
+criteria, the judge prompt and model, the code scorers, the tool inventory, the
+knowledge base and the agent's model all have to be identical across the two runs.
+Change any of them and the second number is not comparable to the first, which is
+the only reason the second run exists.
