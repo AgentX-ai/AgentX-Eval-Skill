@@ -75,7 +75,17 @@ def _reports(client: Any) -> Any:
 
       1. the runner itself, if it has grown one
       2. the evaluations client it wraps
-      3. a client built from the environment
+      3. a fresh client, built from the credentials the caller's client already
+         resolved
+
+    Step 3 deliberately does not re-read the environment first. The client
+    handed to this function has already worked out the key, the base URL and
+    the workspace, and it may have got them somewhere other than the process
+    environment: `AgentX(api_key=...)` constructed in code, or a `.env` the SDK
+    loaded. Rebuilding from `os.environ` throws that away, and
+    `os.environ["AGENTX_API_KEY"]` then raises a KeyError naming a variable the
+    user was never required to set. The environment stays as a fallback for the
+    case where the client exposes nothing useful.
     """
     runner = getattr(client, "evaluations", None)
     if runner is not None and hasattr(runner, "get_report"):
@@ -87,10 +97,31 @@ def _reports(client: Any) -> Any:
 
     from agentx.evaluations.client import EvaluationsClient
 
+    # Prefer the wrapped evaluations client, which carries the resolved values;
+    # then the top-level client; then the environment.
+    def _resolved(*names: str) -> Any:
+        for source in (inner, runner, client):
+            for name in names:
+                value = getattr(source, name, None) if source is not None else None
+                if value:
+                    return value
+        return None
+
+    api_key = _resolved("_api_key", "api_key") or os.getenv("AGENTX_API_KEY")
+    if not api_key:
+        raise SystemExit(
+            "no API key available: pass one to AgentX(api_key=...) or set "
+            "AGENTX_API_KEY in the environment or a .env file"
+        )
+
     return EvaluationsClient(
-        api_key=os.environ["AGENTX_API_KEY"],
-        base_url=os.getenv("AGENTX_API_BASE_URL"),
-        workspace_id=os.getenv("AGENTX_WORKSPACE_ID"),
+        api_key=api_key,
+        # When this comes off a live client it already ends in
+        # /custom-agent-evaluations. The constructor only appends that suffix
+        # when it is missing, so handing it back is safe.
+        base_url=_resolved("_base_url", "base_url") or os.getenv("AGENTX_API_BASE_URL"),
+        workspace_id=_resolved("_workspace_id", "workspace_id")
+        or os.getenv("AGENTX_WORKSPACE_ID"),
     )
 
 
