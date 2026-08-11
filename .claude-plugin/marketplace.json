@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "agentx",
+  "description": "AgentX plugins for Claude Code — evaluation triage and agent governance against a self-hosted AgentX engine",
+  "owner": {
+    "name": "AgentX",
+    "email": "marcin@agentx.so"
+  },
+  "plugins": [
+    {
+      "name": "agentx-eval-fix",
+      "description": "Turn an AgentX self-host evaluation into a triaged code fix and a re-run against the same dataset, so the before and after scores mean something next to each other.",
+      "source": "./plugins/agentx-eval-fix",
+      "category": "development",
+      "homepage": "https://github.com/AgentX-ai/AgentX-Eval-Skill"
+    }
+  ]
+}

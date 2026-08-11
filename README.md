@@ -78,18 +78,31 @@ the comparison is keyed on stays frozen, or the second number means nothing.
 
 ## Install
 
+As a plugin, which is one command and gets updates:
+
 ```bash
-git clone git@github.com:AgentX-ai/AgentX-Eval-Skill.git \
-  ~/.claude/skills/agentx-eval-fix
+claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
+claude plugin install agentx-eval-fix@agentx
 ```
 
-Or per-project, keeping it out of the repo under test — the repo is the thing
-being measured, and tooling in its `git status` ends up in the diff a reviewer
-reads:
+The same two steps work from `/plugin` inside a Claude Code session. Later,
+`claude plugin marketplace update agentx` pulls new versions.
+
+Or copy the skill straight into your skills directory, if you would rather read
+the files than install anything:
 
 ```bash
-git clone git@github.com:AgentX-ai/AgentX-Eval-Skill.git \
-  <your-repo>/.claude/skills/agentx-eval-fix
+git clone https://github.com/AgentX-ai/AgentX-Eval-Skill.git /tmp/agentx-eval-skill
+cp -r /tmp/agentx-eval-skill/plugins/agentx-eval-fix/skills/agentx-eval-fix \
+  ~/.claude/skills/
+```
+
+Per-project instead of per-user works too — copy it to
+`<your-repo>/.claude/skills/` and keep it out of the repo under test, since the
+repo is the thing being measured and tooling in its `git status` ends up in the
+diff a reviewer reads:
+
+```bash
 echo '.claude/skills/agentx-eval-fix/' >> <your-repo>/.git/info/exclude
 ```
 
@@ -138,6 +151,8 @@ The engine needs a provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or
 
 ## What's in here
 
+Everything below is under `plugins/agentx-eval-fix/skills/agentx-eval-fix/`.
+
 | Path | What it is |
 |---|---|
 | `SKILL.md` | Entry point — connecting to the engine, and where the analysis comes from |
@@ -145,6 +160,10 @@ The engine needs a provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or
 | `references/eval-brief.md` | The re-run: guardrails, launch, analysis, comparison |
 | `scripts/fetch_analysis.py` | Evaluation, rubric and judge evidence by id, over plain HTTP |
 | `scripts/bootstrap.sh` | Virtualenv setup for the repo under test |
+
+The nesting is what the plugin format expects: `.claude-plugin/marketplace.json`
+at the repo root declares the marketplace, and each plugin keeps its skills under
+`<plugin>/skills/<name>/`.
 
 Validated end to end on nine agents with deliberately planted defects, spanning
 levers in code, in a YAML config, in a data file, and in the evaluation harness
