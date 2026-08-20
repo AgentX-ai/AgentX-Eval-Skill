@@ -42,6 +42,14 @@ found.
 Turns are limited and re-reading is expensive, so take notes as you go rather
 than planning to come back.
 
+**Quote every glob you pass to a command.** macOS defaults to zsh, where an
+unmatched pattern aborts the whole command line instead of being passed through
+as a literal the way bash does. Writing `--include=*.py` unquoted gets
+`no matches found: --include=*.py` and **nothing runs** - so when several reads
+are batched into one call, a single unquoted glob loses all of them, not just the
+one that failed. Write `--include='*.py'`. The same applies to `*` in any
+`find -name`, `grep --exclude`, or shell loop.
+
 1. **The analysis export**, under `eval-analysis/exports/`. Usually there is one
    `.md` file there and it is the one you want. Read it in full. Its filename
    contains the evaluation id in the form `analysis_<EVAL_ID>.md`; call that
