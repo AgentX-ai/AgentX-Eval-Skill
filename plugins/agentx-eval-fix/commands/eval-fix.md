@@ -24,32 +24,32 @@ one — and stop rather than guessing.
 Show the user the baseline numbers (average, **minimum**, variance, rated count) and how
 many recommendations came back, before going further.
 
-### If the run has no analysis, stop and ask
+### If the evaluation has no analysis, offer to run one
 
-The export's header says `Analysis status: not_started` when nobody has pressed Analyze.
-That is a spend decision and it is the user's, so **ask with AskUserQuestion and wait for
-the answer**. Do not announce which way you are leaning and carry on regardless: either
-the question is worth asking and you wait for it, or it is not and you should not have
-raised it.
+The export's header says `Analysis status: not_started` when nobody has analysed
+this evaluation yet. **The analysis is what this workflow triages** - the numbered
+recommendations are the input to Table 1, and without them there is nothing to
+check against the code except what you find by reading it.
 
-Put the real trade-off in the options:
+So the normal answer is to run it. It still costs a judge pass over the
+evaluation, billed to whichever provider key the engine holds, so it is the
+user's call: **ask with AskUserQuestion and wait for the answer.** Do not
+announce which way you are leaning and carry on regardless.
 
-- **Run it** costs one judge pass over the whole run, billed to whichever provider key the
-  engine holds, and produces the numbered recommendations. It takes a minute or two and
-  the call is synchronous.
-- **Skip it** loses nothing you need to do this work. The per-result ratings, the rubric,
-  each answer's own judge justification and the similarity metrics are all on the run the
-  moment it finishes, and those are the reliable half. The recommendations are the
-  code-blind half this workflow exists to be sceptical of, and on the run this command was
-  built from, three of eight were rejected outright while none of the five that survived
-  said anything the per-result evidence had not already shown.
+Frame it as what it is:
 
-Then act on the answer. If they say run it, re-fetch with `--analyze` and wait for it to
-finish before going on. If they say skip, say in one line that Table 1 will be empty by
-fact rather than omission, and go straight to the results.
+- **Run it** (the expected path) produces the recommendations this triage exists
+  to test. One judge pass over the evaluation, synchronous, a minute or two.
+- **Skip it** still works, but it is the reduced version: Table 1 is empty by
+  fact rather than omission, and the triage runs on the stored per-result
+  ratings, the rubric, each answer's judge justification and the similarity
+  metrics alone. Say so in one line if they choose it.
 
-**If the run already has an analysis, do not ask.** It costs nothing to read what is
-already there.
+Then act on the answer. If they say run it, re-fetch with `--analyze` and wait
+for it to finish before going on.
+
+**If the evaluation already has an analysis, do not ask.** It costs nothing to
+read what is already there.
 
 ## 2. Triage
 
