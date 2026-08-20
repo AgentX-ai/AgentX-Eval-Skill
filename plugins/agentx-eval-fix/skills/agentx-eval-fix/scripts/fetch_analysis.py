@@ -32,8 +32,10 @@ table has its own key and its own data; a key resolves the project, and an
 evaluation is invisible to every other key. `~/.agentx/config.json` holds a key
 written by whichever engine last ran on this machine, which is not necessarily
 the engine on the port you are talking to — a Docker instance keeps its database
-in its own volume and mints its own keys. `GET /dev/bootstrap` asks the running
-engine, so that is what this prefers.
+in its own volume and mints its own keys. So every candidate key is verified with a
+real authenticated read before it is used, and a key that does not work is reported
+as a key problem rather than surfacing as a 401 several steps later. The engine's old
+`GET /dev/bootstrap` handout was removed deliberately - keys are copy-pasted now.
 """
 
 from __future__ import annotations
@@ -83,23 +85,36 @@ def resolve_base_url(explicit: str | None) -> str:
     return base
 
 
+def _key_works(base_url: str, key: str) -> bool:
+    """One cheap authenticated read. A key that cannot list evaluations cannot do anything
+    else here either, so this is the whole validity test."""
+    try:
+        _request(base_url, key, "/evaluate/list?limit=1")
+        return True
+    except EngineError:
+        return False
+
+
 def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str, str]:
-    """Returns (key, where it came from). Order is most-specific to least-trustworthy."""
+    """Returns (key, where it came from).
+
+    Every candidate is *verified* against the engine before being returned. The engine
+    removed the unauthenticated `GET /dev/bootstrap` handout ("keys are copy-pasted, not
+    fetched" - engine/src/index.ts, with a test asserting it 404s), so the old order
+    (bootstrap, then config.json) silently fell through to whichever key a previous engine
+    happened to leave on disk and surfaced as a 401 several steps later, pointing at the
+    evaluation id rather than at the key. Guessing wrong is worse than not guessing.
+    """
     if explicit:
         return explicit, "--api-key"
 
+    tried: list[str] = []
+
     from_env = os.getenv("AGENTX_API_KEY")
     if from_env:
+        # Trusted without a probe: an explicitly exported key is a statement of intent, and
+        # failing it here would hide a genuine engine problem behind a key-resolution error.
         return from_env, "AGENTX_API_KEY"
-
-    # Unauthenticated by design (engine/src/index.ts), and it answers for the engine
-    # actually listening on this port rather than for whatever wrote a file once.
-    try:
-        payload = _request(base_url, None, "/dev/bootstrap")
-        if isinstance(payload, dict) and payload.get("apiKey"):
-            return payload["apiKey"], "GET /dev/bootstrap (Default project)"
-    except EngineError:
-        pass
 
     config = Path(os.getenv("AGENTX_HOME", str(Path.home() / ".agentx"))) / "config.json"
     if config.is_file():
@@ -108,17 +123,29 @@ def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str, str]:
         except (ValueError, OSError):
             key = None
         if key:
-            print(
-                f"warning: falling back to {config}. That file records whichever engine "
-                f"last ran on this machine, which may not be the one on {base_url} — a "
-                f"401 below means exactly that.",
-                file=sys.stderr,
+            if _key_works(base_url, key):
+                return key, str(config)
+            tried.append(
+                f"{config} holds a key the engine on {base_url} rejects - that file records "
+                f"whichever engine last ran on this machine, not this one"
             )
-            return key, str(config)
 
+    # Legacy engines only. Kept because it costs one request and still works against an
+    # older self-host build, but it is no longer the documented path.
+    try:
+        payload = _request(base_url, None, "/dev/bootstrap")
+        if isinstance(payload, dict) and payload.get("apiKey"):
+            return payload["apiKey"], "GET /dev/bootstrap (legacy engine)"
+    except EngineError:
+        tried.append("GET /dev/bootstrap is not served by this engine (removed deliberately)")
+
+    detail = "".join(f"\n  - {t}" for t in tried)
     raise EngineError(
-        f"no API key. Set AGENTX_API_KEY, pass --api-key, or start the engine on "
-        f"{base_url} so GET /dev/bootstrap can hand one over."
+        f"no usable API key for {base_url}.{detail}\n"
+        f"Keys are per project and are copy-pasted, not fetched. Get the current one from:\n"
+        f"  - the engine's startup output: 'Default project API key: agtx_local_...'\n"
+        f"  - or the dashboard's project settings\n"
+        f"then export AGENTX_API_KEY=<key> (or pass --api-key)."
     )
 
 
@@ -626,7 +653,7 @@ def main() -> int:
     ap.add_argument("evaluation_id", nargs="?", help="evaluation / run id (nanoid, e.g. oE1YMG5wqmu4j2bhTtw1X)")
     ap.add_argument("--list", action="store_true", help="list recent evaluations and exit")
     ap.add_argument("--base-url", help=f"engine API base (default: $AGENTX_API_BASE_URL or {DEFAULT_BASE_URL})")
-    ap.add_argument("--api-key", help="project API key (default: $AGENTX_API_KEY, then GET /dev/bootstrap)")
+    ap.add_argument("--api-key", help="project API key (default: $AGENTX_API_KEY, then a verified ~/.agentx/config.json)")
     ap.add_argument("--write-export", type=Path, metavar="DIR", help="render a markdown export into DIR for the triage to read")
     ap.add_argument("--field", help="print one value bare, e.g. dataset_id")
     ap.add_argument("--analyze", action="store_true", help="run Analyze first if none exists (spends judge calls)")

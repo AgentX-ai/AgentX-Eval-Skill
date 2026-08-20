@@ -47,6 +47,27 @@ this page applies to you.
 
 **Otherwise**, the rest of this page is for you.
 
+## Starting from an evaluation id
+
+The normal entry point. Copy the id from the run's card in the dashboard's Evaluate
+tab — the `ID p6sLDw9CPv0XF0eiUA_zF` chip has a copy button next to it — and hand it
+over with nothing else:
+
+```
+Use the agentx-eval-fix skill on evaluation p6sLDw9CPv0XF0eiUA_zF.
+```
+
+That is the whole invocation. From the id alone, everything else is discoverable:
+`fetch_analysis.py <id>` resolves the engine and the key, and the run carries its own
+dataset id, grading config, subject metadata and per-result ratings. Run it from inside
+the repo that holds the agent, because the triage reads that source.
+
+**An id is enough; an analysis is not required.** The per-result rows — rating, expected
+versus actual, the judge's per-answer justification, the similarity metrics and any code
+scorer output — are on the run from the moment it finishes, and they are the reliable
+half. The numbered recommendations only exist once someone runs Analyze, and they are the
+half this skill exists to be sceptical of. Start from the lowest-rated rows.
+
 ## Connect to the engine
 
 Two values, and both have a default worth knowing.
@@ -57,20 +78,23 @@ python3 <skill>/scripts/fetch_analysis.py --list
 
 That is the whole connection test. It resolves the base URL from
 `$AGENTX_API_BASE_URL`, falling back to `http://localhost:4700/api/v1`, and the
-key from `$AGENTX_API_KEY`, falling back to `GET /dev/bootstrap` on the engine
-itself. If it prints evaluations, you are connected.
+key from `$AGENTX_API_KEY`, then from `~/.agentx/config.json` — which it verifies
+against the engine before using. If it prints evaluations, you are connected.
 
 Three things about this that cost a run each when assumed wrong:
 
 - **Keys are per project, and so is the data.** The key *is* the project
   selector; an evaluation belongs to exactly one project and is a 404 under
   every other key. `curl -s http://localhost:4700/api/v1/projects` lists them all
-  with their keys. `/dev/bootstrap` only ever hands back the Default project's.
+  with their keys, given any one project's key to authenticate with.
 - **`~/.agentx/config.json` can be a different engine's key.** It records
   whichever engine last ran on this machine. A Docker instance keeps its database
   in its own volume and mints its own keys, so the file and the port disagree the
-  moment anyone runs the container. That failure reads as a 401, not as a stale
-  file. Prefer `/dev/bootstrap`, which asks the engine actually listening.
+  moment anyone runs the container. `fetch_analysis.py` now verifies that key with a
+  real read before using it and says so plainly when it fails, rather than letting it
+  surface as a 401 against the evaluation id. **`GET /dev/bootstrap` no longer exists** —
+  the engine removed the unauthenticated handout on purpose, with a test asserting it
+  404s, so keys are copy-pasted from the engine's startup output or the dashboard.
 - **Ids are nanoids**, e.g. `oE1YMG5wqmu4j2bhTtw1X`, not the 24-character hex ids
   the hosted platform uses. There is no filename to read one out of, so `--list`
   is how you find one.
@@ -105,6 +129,13 @@ to whichever provider key the engine holds. It also needs that key to exist:
 environment, or set from the dashboard's Platform Settings. Without one it fails
 with a 422 naming the missing key.
 
+**Scoring fails differently, and silently.** The same missing key does not fail the
+run that produced the results: each result is stored with `rating 0` and the reason
+in its own `justification` (`Judge model "..." needs a ... API key`), while the
+harness prints that it scored and finalised normally. A run whose average is absent
+and whose `ratedCount` is 0 has not been judged at all - check the ratings before
+triaging anything, or you will triage a report about an unscored run.
+
 Analyze is **synchronous** here — no job queue, no polling. The HTTP call holds
 open for the whole pass and comes back already finished.
 
@@ -114,6 +145,29 @@ and the code-scorer results are all on the run regardless. What you lose is the
 numbered recommendations, which is to say the part of the report this skill exists
 to be sceptical of. Table 2 of the mapping table — defects the report could not
 see — does not depend on it at all.
+
+### How the run was produced changes what you can conclude
+
+`runSource` on the run says which of two paths created it, and they are not
+equivalent evidence.
+
+- **`sdk`** — your own harness computed the answers and pushed them. It honours
+  the dataset's `number_of_requests`, so each question appears more than once and
+  a single unlucky sample is visible as such. It is also the path that can attach
+  a `traceId` to each result.
+- **`connector`** — the engine drove the dataset through a registered URL itself.
+  One pass per question, no repetitions and no smoke-test variants, so a
+  seven-question dataset yields seven results and every score is a single sample.
+  Read single-question movements here with much more caution than an SDK run's.
+
+**Check whether results carry a `traceId` before trusting anything the report
+says about tool use.** The engine renders the agent's real execution path into
+the judge prompt only for results that link a trace. Without one the judge sees
+answer text alone, cannot tell a correct retrieval-backed citation from a
+fabricated one, and reliably concludes the agent has no working retrieval and
+"may be fabricating tool results". Recommendations of that shape are an artefact
+of the wiring, not a finding about the agent — verify against the source before
+spending a row on them.
 
 ### Which rubric actually graded the run
 
