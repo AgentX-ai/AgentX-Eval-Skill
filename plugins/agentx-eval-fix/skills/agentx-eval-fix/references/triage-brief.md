@@ -546,6 +546,27 @@ place as the record of what the previous version was.
 Do not run the evaluation in this run. That is the next brief's job, it costs
 real money, and the dependencies are not installed yet.
 
+### Spot-check the worst question first
+
+Before anything else, **invoke the agent directly on the single lowest-rated
+question** and read what comes back. One call, no dataset, no judge.
+
+This is the cheapest thing in the whole brief and it catches the failure that
+costs the most: a change that is syntactically perfect and does nothing. On the
+run this brief was last exercised against, the new rule read "call the search
+tool before answering", the agent was not answering - it was asking a clarifying
+question - so it skipped the tool entirely and produced the same 1-rated reply as
+before. The prompt looked right in the diff. Rewriting it as "before your first
+reply, including before asking a clarifying question" fixed it. That was found in
+one invocation, before the re-run, instead of after paying for a full one.
+
+If the dependencies are not installed, this is the moment to run
+`<skill>/scripts/bootstrap.sh`. Nothing downstream works without them anyway.
+
+If the answer still shows the behaviour the mapping table says you fixed, the fix
+is not done. Go back to Phase 3 and say so in the table rather than carrying a
+change forward that you have already watched fail.
+
 Check instead that what you changed is syntactically valid and that the frozen
 surfaces really are unchanged. For Python, parse rather than import, since
 importing pulls in dependencies that are not present:
@@ -597,27 +618,21 @@ If the push is refused, that is a reportable outcome and not a failure. The
 commit exists locally and is fully inspectable. Say so in the final block and
 carry on, and skip the pull request below.
 
-### Open a pull request
+### Do not open the pull request yet
 
-A pushed branch is easy to lose track of. A pull request puts the mapping table
-in front of a reviewer with the diff attached, which is where this work wants to
-end up.
+Push the branch. Stop there.
 
-```bash
-gh pr create --base "$(git remote show origin | sed -n 's/.*HEAD branch: //p')" \
-  --head "eval-fix/<EVAL_ID>" --title "..." --body-file <file>
-```
+A pull request opened now can only say what you changed and why you believed it
+would help. The one thing a reviewer wants - whether it actually helped - does
+not exist until the re-run does, and this whole workflow exists to produce that
+number. A PR raised before it either has to be edited afterwards or stands as a
+claim nobody checked.
 
-Pass the body as a file rather than a string. It contains a markdown table full
-of quotes and backticks, and shell quoting will mangle it.
+It is also somebody else's repository. Opening a pull request on it is an
+outward-facing act, and it is not yours to do unasked.
 
-Title it after what was actually done, not after the eval id. The body should
-lead with the applied and rejected counts, link the mapping table by path, and
-carry any `RUBRIC-CONFORMING` rows near the top, since those are the only thing
-the reviewer must check personally.
-
-Report the URL `gh` prints. If it fails or is not installed, report that with the
-branch name and stop there rather than improvising another route.
+So: push, report the branch name, and leave the PR to the re-run brief, which
+offers it once the comparison is in hand.
 
 ## Phase 6: the report
 
