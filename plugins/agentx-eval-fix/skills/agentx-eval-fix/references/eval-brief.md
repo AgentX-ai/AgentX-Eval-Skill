@@ -445,3 +445,37 @@ commit:            <short sha>
 pushed:            yes | no (<reason>)
 stray_env_deleted: yes | no
 ```
+
+## Last: offer the pull request
+
+Now, and not before, there is something worth putting in front of a reviewer: the
+change, the reasoning, and whether it worked.
+
+**Ask with AskUserQuestion and wait.** Opening a pull request on someone's
+repository is an outward-facing act, and the verdict above is exactly the thing
+that should decide it. Offer the three real options:
+
+- **Open it** with the before-and-after in the body.
+- **Push only**, leaving the branch for them to open themselves.
+- **Neither**, if the numbers went the wrong way and the branch should just be
+  deleted.
+
+A regression is a perfectly good outcome to report and a bad one to raise a pull
+request for. If the verdict is `regressed`, say so plainly in the question rather
+than asking a neutral question over a bad result.
+
+If they say open it:
+
+```bash
+gh pr create --base "$(git remote show origin | sed -n 's/.*HEAD branch: //p')" \
+  --head "eval-fix/<EVAL_ID>" --title "..." --body-file <file>
+```
+
+Pass the body as a file rather than a string. It contains markdown tables full of
+quotes and backticks, and shell quoting will mangle them.
+
+Title it after what was actually done, not after the eval id. The body leads with
+the score movement - average, and the **minimum**, which is usually the more
+honest number - then the applied and rejected counts, then a link to the mapping
+table by path. Name any question that regressed. A reviewer who finds a
+regression you did not mention stops trusting the rest of the summary.

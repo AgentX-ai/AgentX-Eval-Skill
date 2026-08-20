@@ -98,6 +98,11 @@ both are and finish.
 ## 4. Re-run only when asked
 
 On approval, follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/references/eval-brief.md`.
+
+Do not open a pull request before this point. Until the re-run exists there is no
+before-and-after to put in it, which is the only thing that makes it worth
+reviewing. Push the branch in step 3, and offer the PR once the comparison is in
+hand - asking first, and saying plainly if the numbers went the wrong way.
 Re-run against the **same dataset id** and keep every frozen surface frozen: questions,
 all three criteria strings, judge prompt and model, similarity metrics, code scorers, tool
 count, knowledge base and agent model. Then write the before/after, reporting the minimum
