@@ -122,7 +122,9 @@ python3 <skill>/scripts/fetch_analysis.py <evaluation_id> --analyze \
   --write-export <repo>/eval-analysis/exports/
 ```
 
-**Ask before you pass `--analyze`.** It is a real judge pass — every sampled item
+**Ask before you pass `--analyze`, and wait for the answer.** Asking and then proceeding
+anyway is worse than not asking: it spends the reader's attention without giving them the
+choice. It is a real judge pass — every sampled item
 re-rated by up to three judges, then one more call to write the narrative — billed
 to whichever provider key the engine holds. It also needs that key to exist:
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` in the engine's
