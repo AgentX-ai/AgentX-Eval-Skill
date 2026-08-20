@@ -141,6 +141,10 @@ triaging anything, or you will triage a report about an unscored run.
 Analyze is **synchronous** here — no job queue, no polling. The HTTP call holds
 open for the whole pass and comes back already finished.
 
+**The analysis is the input this skill triages**, so running it is the normal
+path, not an upsell. What follows is the fallback when someone declines the
+spend.
+
 **A triage without an analysis is still worth doing.** The stored per-result
 ratings, the rubric, the judge's per-answer justifications, the similarity metrics
 and the code-scorer results are all on the run regardless. What you lose is the

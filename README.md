@@ -135,9 +135,13 @@ before and after side by side.
 Without the plugin installed, the same thing in words still works — name the
 skill and the brief, and give it the id.
 
-### An analysis is optional
+### The analysis is the input, and it is a spend
 
-`--analyze` is the one step that spends judge calls, and it is not required. The
+The recommendations this skill triages come from analysing the evaluation, so
+`--analyze` is the normal path when a run has not been analysed yet. It is also
+the one step that spends judge calls, which is why the skill asks first rather
+than running it unprompted. If you decline, the triage still works on a reduced
+input: the
 per-result ratings, the rubric, each answer's judge justification, the similarity
 metrics and any code-scorer output are all on the run the moment it finishes, and
 they are the reliable half. The numbered recommendations are the code-blind half

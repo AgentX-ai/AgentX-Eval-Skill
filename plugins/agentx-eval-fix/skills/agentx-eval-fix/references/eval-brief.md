@@ -137,24 +137,31 @@ Report and stop if any is missing, rather than improvising a fallback.
 bash <skill>/scripts/bootstrap.sh
 ```
 
-It builds a virtualenv and ends with a line confirming the imports that matter.
-If it fails, report the error verbatim and stop.
+It dispatches on whichever manifest the repo has - `requirements.txt` or
+`pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `Gemfile`, `pom.xml` -
+and ends with a line saying which toolchain it readied. If it fails, report the
+error verbatim and stop.
 
-**If it stops because the repo has no dependency manifest**, that is common:
-plenty of small agent repos document their install as a pip line in the README
-and never pin anything. Read the install instructions, pass the packages
-explicitly, and pin the evaluation SDK to an exact version:
+**The repo under test can be in any language.** The agent is reached through the
+repo's own harness, and neither the harness nor this brief cares what it is
+written in. Do not assume Python because this skill's own scripts are Python;
+those are unrelated and run under whatever `python3` is already on the machine.
+
+**If it stops because there is no manifest it recognises**, that is common: plenty
+of small agent repos document their install as one line in the README and never
+pin anything. Do whatever the README says yourself, then carry on. For a Python
+repo you can also pass the packages explicitly, and pin the evaluation client:
 
 ```bash
 bash <skill>/scripts/bootstrap.sh <pkg> <pkg> "agentx-python==<version>"
 ```
 
-Pin the SDK because a before-and-after comparison whose scoring client changed
+Pin the client because a before-and-after comparison whose scoring library changed
 underneath is not a controlled comparison. Note the missing manifest in your final
 report as a reproducibility gap: the next run will have to guess the same way you
 just did, and it may guess differently.
 
-Then make sure the virtualenv cannot be committed:
+If the bootstrap created a virtualenv, make sure it cannot be committed:
 
 ```bash
 grep -q '^\.venv/$' .gitignore && echo ".venv ignored, good" || echo "WARNING: .venv not ignored"
@@ -168,15 +175,25 @@ Locally there is no wall-clock ceiling, so the foreground is fine for a small
 dataset. For anything that will run more than a few minutes, detach it so a
 command timeout cannot take the run down after the money is spent:
 
+**Use the repo's own run command**, whatever that is - the line its README gives,
+its `package.json` script, its Makefile target. Write that command into the
+mapping table before you launch, because it is one of the surfaces the comparison
+is keyed on: v1 and v2 have to be produced the same way, and "how the harness was
+started" is easy to change by accident between two runs.
+
 ```bash
 mkdir -p .eval-logs
 AGENTX_API_BASE_URL=http://localhost:4700/api/v1 \
-nohup .venv/bin/python -u <evaluation script> > .eval-logs/eval-v2.log 2>&1 &
+nohup <the repo's run command> > .eval-logs/eval-v2.log 2>&1 &
 echo "launched pid $!"
 ```
 
-`-u` is not optional. Without unbuffered output the log stays empty until the
-process exits, and you cannot tell "still running" from "hung".
+For a Python harness that command is usually `.venv/bin/python -u <script>`, and
+**the `-u` is not optional**: without unbuffered output the log stays empty until
+the process exits and you cannot tell "still running" from "hung". Other
+toolchains have their own equivalent - `node` is unbuffered already, Go's
+`log` package writes straight through - so check rather than assume the log will
+fill as it goes.
 
 ### The abort check, 30 seconds in
 
