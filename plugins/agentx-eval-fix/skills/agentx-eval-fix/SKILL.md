@@ -47,6 +47,27 @@ this page applies to you.
 
 **Otherwise**, the rest of this page is for you.
 
+## Starting from an evaluation id
+
+The normal entry point. Copy the id from the run's card in the dashboard's Evaluate
+tab — the `ID p6sLDw9CPv0XF0eiUA_zF` chip has a copy button next to it — and hand it
+over with nothing else:
+
+```
+Use the agentx-eval-fix skill on evaluation p6sLDw9CPv0XF0eiUA_zF.
+```
+
+That is the whole invocation. From the id alone, everything else is discoverable:
+`fetch_analysis.py <id>` resolves the engine and the key, and the run carries its own
+dataset id, grading config, subject metadata and per-result ratings. Run it from inside
+the repo that holds the agent, because the triage reads that source.
+
+**An id is enough; an analysis is not required.** The per-result rows — rating, expected
+versus actual, the judge's per-answer justification, the similarity metrics and any code
+scorer output — are on the run from the moment it finishes, and they are the reliable
+half. The numbered recommendations only exist once someone runs Analyze, and they are the
+half this skill exists to be sceptical of. Start from the lowest-rated rows.
+
 ## Connect to the engine
 
 Two values, and both have a default worth knowing.
@@ -57,8 +78,8 @@ python3 <skill>/scripts/fetch_analysis.py --list
 
 That is the whole connection test. It resolves the base URL from
 `$AGENTX_API_BASE_URL`, falling back to `http://localhost:4700/api/v1`, and the
-key from `$AGENTX_API_KEY`, falling back to `GET /dev/bootstrap` on the engine
-itself. If it prints evaluations, you are connected.
+key from `$AGENTX_API_KEY`, then from `~/.agentx/config.json` — which it verifies
+against the engine before using. If it prints evaluations, you are connected.
 
 Three things about this that cost a run each when assumed wrong:
 
@@ -69,8 +90,11 @@ Three things about this that cost a run each when assumed wrong:
 - **`~/.agentx/config.json` can be a different engine's key.** It records
   whichever engine last ran on this machine. A Docker instance keeps its database
   in its own volume and mints its own keys, so the file and the port disagree the
-  moment anyone runs the container. That failure reads as a 401, not as a stale
-  file. Prefer `/dev/bootstrap`, which asks the engine actually listening.
+  moment anyone runs the container. `fetch_analysis.py` now verifies that key with a
+  real read before using it and says so plainly when it fails, rather than letting it
+  surface as a 401 against the evaluation id. **`GET /dev/bootstrap` no longer exists** —
+  the engine removed the unauthenticated handout on purpose, with a test asserting it
+  404s, so keys are copy-pasted from the engine's startup output or the dashboard.
 - **Ids are nanoids**, e.g. `oE1YMG5wqmu4j2bhTtw1X`, not the 24-character hex ids
   the hosted platform uses. There is no filename to read one out of, so `--list`
   is how you find one.
