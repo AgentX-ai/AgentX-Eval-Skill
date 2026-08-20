@@ -215,6 +215,14 @@ keep the frozen surfaces frozen, and do not run the evaluation during the triage
 checkpoint of the whole workflow. Everything up to here was free; the next step
 is not.
 
+Having summarised it, **ask with AskUserQuestion whether to re-run now** rather than
+ending on "let me know". Two options — re-run now, or not yet — with the cost stated
+concretely in the re-run option (questions × runs invocations plus the judge pass, read
+off the dataset rather than guessed) and, in the other, one line on how to come back to
+it. Add a third option only if the triage produced a real one, such as an unresolved
+`RUBRIC-CONFORMING` row to check first. The user has just read the verdict counts; that
+is the moment they can decide, and a button beats a paragraph.
+
 ### 4. Re-run the evaluation
 
 Read `references/eval-brief.md` and carry it out. Two things there are worth
@@ -224,9 +232,14 @@ repeating because they are the expensive failures:
   dataset id publishes a brand new one and scores against freshly created
   questions; a harness with `AGENTX_API_BASE_URL` unset talks to the hosted
   platform instead of your engine. Neither errors.
-- **The SDK's `.analyze()` does not work against self-host.** It posts to a route
-  the engine does not implement. Use the engine's own analyze endpoint, or
-  `fetch_analysis.py --analyze`.
+- **`.analyze()` against self-host depends on the versions in play.** It posts to
+  `/custom-agent-evaluations/runs/{id}/analyze`, which older engines do not implement
+  and which older SDKs do not fall back from — and the SDK swallows the failure, so the
+  symptom is an empty report that reads like a run which scored nothing, not an error.
+  Current engines serve that route, and current SDKs fall back to the dashboard route on
+  a 404, so the pairing works in three of four combinations and fails silently in the
+  fourth. If a report comes back empty, check the engine's analyze route before believing
+  it. `fetch_analysis.py --analyze` calls the dashboard route directly and works either way.
 
 `scripts/bootstrap.sh` builds a virtualenv from `requirements.txt`, a
 `pyproject.toml`, or packages you name on the command line.

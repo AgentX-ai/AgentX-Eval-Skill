@@ -447,11 +447,14 @@ the worst possible outcome: a full run's worth of spend, a report that looks
 complete, and the numbers silently taken from the source this whole workflow
 exists to avoid.
 
-**Take `.analyze()` out of the harness if it is there.** On self-host it posts to
-a route the engine does not implement and 404s. It does not raise — the SDK
+**Take `.analyze()` out of the harness if it is there.** Against an older engine
+it posts to a route that does not exist and 404s, and it does not raise — the SDK
 catches the 404, catches the follow-up `get_report()` failure, and prints an
 empty report with no statistics and no recommendations, which reads exactly like
-an evaluation that scored nothing. The analysis is a separate, synchronous call
+an evaluation that scored nothing. Newer engines serve the route and newer SDKs
+fall back to the dashboard route, but the harness cannot tell which it is talking
+to, and a call that is silently a no-op on some deployments is worse than no
+call. The analysis is a separate, synchronous call
 to `/evaluate/analyze/{run_id}` on the dashboard router, and the eval brief runs
 it as its own phase. Leaving a dead `.analyze()` in the harness costs nothing but
 guarantees the next reader misdiagnoses a healthy run.
