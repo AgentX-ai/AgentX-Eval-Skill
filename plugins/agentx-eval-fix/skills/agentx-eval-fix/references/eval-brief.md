@@ -257,21 +257,23 @@ over two, on a run whose stored results were all present and rated. `ratedCount`
 from `liveStatistics`, or the length of `results[]`, is the answer to how many
 were scored. The batch line is not.
 
-**`Analyze failed: HTTP 404`, followed by an empty report.** If the harness calls
-the SDK's `.analyze()`, this is what self-host does, and it is expected — see
-Phase 4. It does not crash and it does not mean the evaluation failed. The SDK
-swallows the 404, then swallows the follow-up `get_report()` failure, then prints
-an empty report with no statistics and no recommendations. That printout looks
-exactly like a run that scored nothing. The results are stored and rated
-regardless; ignore the printed report and read the run over HTTP.
+**`Analyze failed: HTTP 404`, followed by an empty report.** An older engine
+paired with an older SDK. It does not crash and it does not mean the evaluation
+failed: the SDK swallows the 404, then swallows the follow-up `get_report()`
+failure, then prints an empty report with no statistics and no recommendations,
+which looks exactly like a run that scored nothing. The results are stored and
+rated regardless; ignore the printed report and read the run over HTTP. Current
+engines serve the SDK's analyze routes and current SDKs fall back to the
+dashboard route on a 404, so seeing this at all means one side is behind.
 
 ## Phase 4: run the analysis
 
-Self-host does not implement the SDK's analysis routes: `analyze_run()`,
-`get_analysis_status()` and `get_report()` all post to
-`/custom-agent-evaluations/runs/{id}/...`, which 404s. The engine's own Analyze
-lives on the dashboard router and is synchronous — one call, no polling, already
-finished when it returns.
+Self-host's Analyze is synchronous — one call, no polling, already finished when
+it returns. Older engines served it only from the dashboard router and 404'd the
+SDK's `analyze_run()` / `get_analysis_status()` / `get_report()`; current ones
+serve both, and current SDKs fall back to the dashboard route on a 404. Calling
+the dashboard route yourself works against every combination, so it is what this
+brief uses.
 
 ```bash
 python3 <skill>/scripts/fetch_analysis.py <v2_run_id> --analyze \

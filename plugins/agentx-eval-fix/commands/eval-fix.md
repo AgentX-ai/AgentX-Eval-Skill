@@ -71,6 +71,30 @@ Spot-check the worst question with one direct agent invocation before you claim 
 works. A prompt rule that looks right often is not — and one invocation is far cheaper
 than discovering it after a full run.
 
+### Then ask, with buttons
+
+Having summarised, **ask with AskUserQuestion whether to re-run now** — do not end the turn
+on an open-ended "let me know". The user has just read the verdict counts and the spot-check;
+that is the moment they can actually decide, and a button is a decision where a paragraph is
+a chore.
+
+Ask exactly one question, and put the cost in the option descriptions rather than in a
+warning above them:
+
+- **Re-run now** — the same dataset, every frozen surface frozen. Say what it spends in
+  concrete terms: N questions × M runs agent invocations plus the judge pass, and roughly
+  how long. Read N and M off the dataset instead of guessing.
+- **Not yet** — the branch and the mapping table stay as they are; nothing is spent. Say in
+  one line how to come back to it (re-run this command, or ask for the eval brief directly).
+
+Add a third option only when the triage actually produced one — for example an unresolved
+`RUBRIC-CONFORMING` row, where "check that figure first, then re-run" is a genuinely
+different choice and not a hedge.
+
+Then act on the answer. On "re-run now", go straight to step 4 without asking again. On
+"not yet", stop cleanly: the branch is committed and the report is on disk, so say where
+both are and finish.
+
 ## 4. Re-run only when asked
 
 On approval, follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/references/eval-brief.md`.
