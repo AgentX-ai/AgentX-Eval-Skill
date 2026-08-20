@@ -88,6 +88,9 @@ claude plugin install agentx-eval-fix@agentx
 The same two steps work from `/plugin` inside a Claude Code session. Later,
 `claude plugin marketplace update agentx` pulls new versions.
 
+**Restart Claude Code afterwards.** Slash commands are loaded at startup, so
+`/eval-fix` does not exist in the session you installed from.
+
 Or copy the skill straight into your skills directory, if you would rather read
 the files than install anything:
 
@@ -108,21 +111,39 @@ echo '.claude/skills/agentx-eval-fix/' >> <your-repo>/.git/info/exclude
 
 ## Run it
 
-From inside the repo that holds your agent:
+From inside the repo that holds your agent — the triage reads that source:
 
 ```
-Use the agentx-eval-fix skill. Follow references/triage-brief.md exactly,
-in order, against this repo. The analysis is evaluation oE1YMG5wqmu4j2bhTtw1X.
+/eval-fix oE1YMG5wqmu4j2bhTtw1X
+```
+
+The evaluation id is the whole input. Copy it from the run's card in the
+dashboard's Evaluate tab; everything else is discoverable from it, since the run
+carries its own dataset, grading config, subject metadata and per-result ratings,
+and the script resolves the engine and key on its own. Anything after the id is
+passed through as extra instruction:
+
+```
+/eval-fix oE1YMG5wqmu4j2bhTtw1X focus on the pricing question, it regressed
 ```
 
 It fetches the evaluation, reads the source, writes the mapping table, applies
-what survived, and stops. Review `eval-analysis/mapping-<id>.md`, then:
+what survived on a branch, and stops. Review `eval-analysis/mapping-<id>.md`,
+then approve the re-run. You get `eval-analysis/v2-report-<id>.md` with the
+before and after side by side.
 
-```
-Follow references/eval-brief.md and re-run the evaluation.
-```
+Without the plugin installed, the same thing in words still works — name the
+skill and the brief, and give it the id.
 
-You get `eval-analysis/v2-report-<id>.md` with the before and after side by side.
+### An analysis is optional
+
+`--analyze` is the one step that spends judge calls, and it is not required. The
+per-result ratings, the rubric, each answer's judge justification, the similarity
+metrics and any code-scorer output are all on the run the moment it finishes, and
+they are the reliable half. The numbered recommendations are the code-blind half
+this skill exists to be sceptical of. With no analysis present, Table 1 is empty
+by fact rather than omission and Table 2 becomes the deliverable — which is where
+the useful findings usually were anyway.
 
 ## Reviewing the mapping table
 
@@ -148,18 +169,30 @@ virtualenv for the repo under test when it needs one.
 
 The engine needs a provider key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` or
 `GEMINI_API_KEY`, or the dashboard's Platform Settings) to score anything.
+Without one a run still reports that it finished, and every result is stored with
+rating 0 and the reason in its justification — check the ratings, not the exit
+code.
+
+Project API keys are **copy-pasted, not fetched**: the engine deliberately
+removed its old unauthenticated `/dev/bootstrap` handout. `fetch_analysis.py`
+reads `$AGENTX_API_KEY`, then `~/.agentx/config.json` — which it verifies against
+the engine before using, because that file records whichever engine last ran on
+the machine and not necessarily the one you are talking to. When no key works it
+says so, and says where to get one, instead of failing later as a 404 that looks
+like a bad evaluation id.
 
 ## What's in here
 
-Everything below is under `plugins/agentx-eval-fix/skills/agentx-eval-fix/`.
+Everything below is under `plugins/agentx-eval-fix/`.
 
 | Path | What it is |
 |---|---|
-| `SKILL.md` | Entry point — connecting to the engine, and where the analysis comes from |
-| `references/triage-brief.md` | The core artifact. Six phases, executed in order |
-| `references/eval-brief.md` | The re-run: guardrails, launch, analysis, comparison |
-| `scripts/fetch_analysis.py` | Evaluation, rubric and judge evidence by id, over plain HTTP |
-| `scripts/bootstrap.sh` | Virtualenv setup for the repo under test |
+| `commands/eval-fix.md` | The `/eval-fix <id>` slash command — the normal entry point |
+| `skills/agentx-eval-fix/SKILL.md` | Connecting to the engine, and where the analysis comes from |
+| `skills/agentx-eval-fix/references/triage-brief.md` | The core artifact. Six phases, executed in order |
+| `skills/agentx-eval-fix/references/eval-brief.md` | The re-run: guardrails, launch, analysis, comparison |
+| `skills/agentx-eval-fix/scripts/fetch_analysis.py` | Evaluation, rubric and judge evidence by id, over plain HTTP |
+| `skills/agentx-eval-fix/scripts/bootstrap.sh` | Virtualenv setup for the repo under test |
 
 The nesting is what the plugin format expects: `.claude-plugin/marketplace.json`
 at the repo root declares the marketplace, and each plugin keeps its skills under
@@ -169,3 +202,11 @@ Validated end to end on nine agents with deliberately planted defects, spanning
 levers in code, in a YAML config, in a data file, and in the evaluation harness
 itself; then on three LangChain agents scoring 3.60, 5.50 and 4.80, triaged to
 10.00, 9.60 and 9.80 on the same datasets.
+
+Most recently against a LangChain/LangGraph support agent on a self-host engine:
+**6.25 → 9.53** average, minimum **1 → 7**, rating variance **5.78 → 0.98**, on
+the same dataset with criteria, judge and model frozen. Of seven
+recommendations, three were applied, two applied with changed scope, one rejected
+as already implemented and one as harmful against the dataset's own rejection
+criteria. The single change that moved the score most — retrieval width — came
+from reading the code and appeared in no recommendation at all.
