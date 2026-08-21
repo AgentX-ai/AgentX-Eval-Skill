@@ -1,7 +1,23 @@
-# agentx-add-tracing
+# agentx
 
-A Claude Code skill that wires [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval)
-production tracing into a Python agent that has none — key, SDK, and instrumentation
+One plugin, two commands, one loop: get an agent's real runs into
+[AgentX](https://github.com/AgentX-ai/AgentX-trace-eval), then turn what they measure into a
+code fix.
+
+| Command | What it does |
+|---|---|
+| `/agentx-add-tracing` | Wires tracing into a Python agent that has none — key, SDK, and one span where the run begins. Documented below. |
+| `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
+
+They are one plugin because they are one story, and the seam between them is the reason to
+have both: an evaluation result carrying a `traceId` is judged against the agent's **real
+execution path**, where one without it is judged on answer text alone.
+
+---
+
+## `/agentx-add-tracing`
+
+Wires production tracing into a Python agent that has none — key, SDK, and instrumentation
 where it belongs.
 
 ```
@@ -40,7 +56,7 @@ no-op tracer instead of raising, and finishes by sending a real trace and fetchi
 
 ```bash
 claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
-claude plugin install agentx-tracing@agentx
+claude plugin install agentx@agentx
 ```
 
 **Restart Claude Code afterwards** — slash commands are loaded at startup.
@@ -129,6 +145,7 @@ rather than resting on a review.
 | Path | What it is |
 |---|---|
 | `commands/agentx-add-tracing.md` | The `/agentx-add-tracing` slash command — the normal entry point |
+| `commands/eval-fix.md` | The `/eval-fix <id>` slash command, the plugin's other half |
 | `skills/agentx-add-tracing/SKILL.md` | The model: what to trace, and the two silent failures |
 | `skills/agentx-add-tracing/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
 | `skills/agentx-add-tracing/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
@@ -155,5 +172,5 @@ version that has it, which is why the brief prefers it everywhere.
 
 An evaluation result carrying a `traceId` is judged against the agent's real execution path;
 one without it is judged on answer text alone, and a judge working from text alone reliably
-concludes an agent has no retrieval when it plainly does. Once tracing is in,
-[`agentx-eval-fix`](../agentx-eval-fix) picks the story up from there.
+concludes an agent has no retrieval when it plainly does. Once tracing is in, `/eval-fix <id>`
+— the other half of this plugin — picks the story up from there.

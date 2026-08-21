@@ -4,10 +4,12 @@ Two plugins for working with [AgentX](https://github.com/AgentX-ai/AgentX-trace-
 the Trace/Evaluate/Monitor engine you run yourself, `http://localhost:4700` by default.
 One gets your agent's real runs into it; the other turns what it measures into a code fix.
 
-| Plugin | Command | What it does |
-|---|---|---|
-| [**agentx-tracing**](plugins/agentx-tracing) | `/agentx-add-tracing` | Wires tracing into a Python agent that has none: key, SDK, and one span where the run begins |
-| **agentx-eval-fix** | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
+One plugin, [`agentx`](plugins/agentx), carrying two commands:
+
+| Command | What it does |
+|---|---|
+| `/agentx-add-tracing` | Wires tracing into a Python agent that has none: key, SDK, and one span where the run begins |
+| `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
 
 They compose in that order, and the seam between them is the reason to have both: an
 evaluation result carrying a `traceId` is judged against the agent's **real execution path**,
@@ -16,15 +18,19 @@ has no retrieval when it plainly does.
 
 ```bash
 claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
-claude plugin install agentx-tracing@agentx     # start here if nothing is traced yet
-claude plugin install agentx-eval-fix@agentx
+claude plugin install agentx@agentx
 ```
 
 Restart Claude Code afterwards — slash commands are loaded at startup. This repo is a
-[Cursor marketplace](#cursor) too, and both plugins come along with it.
+[Cursor marketplace](#cursor) too, and the plugin comes along with it.
 
-Everything below is about **agentx-eval-fix**; `agentx-tracing` has
-[its own README](plugins/agentx-tracing).
+> **Upgrading from the two-plugin layout?** `agentx-eval-fix` and `agentx-tracing` are now one
+> plugin. `claude plugin uninstall agentx-eval-fix@agentx && claude plugin uninstall
+> agentx-tracing@agentx`, then `claude plugin marketplace update agentx && claude plugin install
+> agentx@agentx`.
+
+Everything below is about **`/eval-fix`**; `/agentx-add-tracing` is documented in
+[the plugin's README](plugins/agentx/README.md).
 
 ---
 
@@ -118,7 +124,7 @@ As a plugin, which is one command, carries the `/eval-fix` command, and gets upd
 
 ```bash
 claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
-claude plugin install agentx-eval-fix@agentx
+claude plugin install agentx@agentx
 ```
 
 The same two steps work from `/plugin` inside a Claude Code session. Later,
@@ -143,7 +149,7 @@ read, so a single copy serves every one of them:
 ```bash
 mkdir -p .agents/skills && curl -fsSL https://github.com/AgentX-ai/AgentX-Eval-Skill/archive/main.tar.gz \
   | tar -xz --strip-components=4 -C .agents/skills \
-    AgentX-Eval-Skill-main/plugins/agentx-eval-fix/skills/agentx-eval-fix
+    AgentX-Eval-Skill-main/plugins/agentx/skills/agentx-eval-fix
 ```
 
 Swap `.agents/skills` for `~/.agents/skills` to install once for every repo
@@ -324,7 +330,7 @@ engine, instead of failing later as a 404 that looks like a bad evaluation id.
 
 ## What's in here
 
-Everything below is under `plugins/agentx-eval-fix/`.
+Everything below is under `plugins/agentx/`.
 
 | Path | What it is |
 |---|---|

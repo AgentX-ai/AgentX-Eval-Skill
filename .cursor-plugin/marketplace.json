@@ -10,14 +10,9 @@
   },
   "plugins": [
     {
-      "name": "agentx-eval-fix",
-      "source": "./plugins/agentx-eval-fix",
-      "description": "Turn an AgentX self-host evaluation into a triaged code fix and a re-run against the same dataset, so the before and after scores mean something next to each other."
-    },
-    {
-      "name": "agentx-tracing",
-      "source": "./plugins/agentx-tracing",
-      "description": "Wire AgentX production tracing into an existing Python agent: fetch the project key from the engine, write .env.agentx, initialise the SDK, and instrument the calls worth tracing."
+      "name": "agentx",
+      "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-add-tracing instruments a Python agent; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
+      "source": "./plugins/agentx"
     }
   ]
 }
