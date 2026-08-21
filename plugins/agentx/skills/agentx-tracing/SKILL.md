@@ -1,5 +1,5 @@
 ---
-name: agentx-add-tracing
+name: agentx-tracing
 description: >-
   Wire AgentX production tracing into an existing Python agent, end to end: read the project
   API key off the engine, write .env.agentx, install agentx-python from PyPI, initialise the

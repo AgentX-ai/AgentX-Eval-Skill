@@ -39,7 +39,7 @@ shell**, so there is no exporting it once.
 ## 2. Survey the repo before touching it
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/detect_stack.py .
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/scripts/detect_stack.py .
 ```
 
 Report what it found in three lines: the framework and its integration, the entry point a run
@@ -58,7 +58,7 @@ there is an obvious single starred candidate, do not ask at all.
 ## 3. Key, dependency, bootstrap
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/agentx_key.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/scripts/agentx_key.py \
   --host <the address from step 1> --json --limit 8
 ```
 
@@ -79,7 +79,7 @@ cannot delete**.
 workspace or an auth-enabled engine fixes the destination by key alone - and carry on.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/agentx_key.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/scripts/agentx_key.py \
   --host <the address from step 1> --write-env .env.agentx --project <id>
 ```
 
@@ -89,11 +89,11 @@ display and write the chosen one straight to disk. If no key resolves, relay the
 message: it names where a key actually comes from for that engine.
 
 Then install `agentx-python` (with the extra `detect_stack.py` named), add it to the repo's
-manifest, and copy `${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/assets/agentx_tracing.py`
+manifest, and copy `${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/assets/agentx_tracing.py`
 into the repo. Copy that file; do not rewrite it from memory. Then:
 
 ```bash
-<project-interpreter> ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/verify_trace.py --capabilities
+<project-interpreter> ${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/scripts/verify_trace.py --capabilities
 ```
 
 The published package and its docs are not always in step. Generate code against what this
@@ -101,7 +101,7 @@ prints, not against a README.
 
 ## 4. Instrument
 
-Follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/references/instrumentation-brief.md`
+Follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/references/instrumentation-brief.md`
 exactly, phases 2 through 5.
 
 The single most important thing in it: **one span where the run begins, one line of framework
@@ -113,7 +113,7 @@ the job as phases 2 to 4.
 ## 5. Prove it, with a real trace
 
 ```bash
-<project-interpreter> ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/verify_trace.py
+<project-interpreter> ${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing/scripts/verify_trace.py
 ```
 
 Then run the agent's own entry point once and look at what arrived: one trace per run, model
