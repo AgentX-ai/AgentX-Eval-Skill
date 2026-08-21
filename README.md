@@ -4,7 +4,7 @@ One plugin, two commands, one loop: get an agent's real runs into
 [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval) — the Trace/Evaluate/Monitor engine you
 run yourself — then turn what they measure into a code fix.
 
-| Command | What it does |
+| Skill | What it does |
 |---|---|
 | `/agentx-add-tracing` | Wires tracing into a Python agent that has none: key, SDK, and one span where the run begins |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
@@ -125,8 +125,8 @@ Everything is under `plugins/agentx/`.
 |---|---|
 | `commands/agentx-add-tracing.md` | The `/agentx-add-tracing` slash command |
 | `commands/eval-fix.md` | The `/eval-fix <id>` slash command |
-| `skills/agentx-tracing/` | Where to trace and where not to, plus the bootstrap module and three scripts |
-| `skills/agentx-eval-fix/` | Connecting to the engine, the triage brief, and the re-run brief |
+| `skills/agentx-add-tracing/` | Where to trace and where not to, plus the bootstrap module and three scripts |
+| `skills/eval-fix/` | Connecting to the engine, the triage brief, and the re-run brief |
 
 Full detail on the tracing half is in [`plugins/agentx/README.md`](plugins/agentx/README.md).
 Each skill's `SKILL.md` is the reference for its own workflow.

@@ -1,5 +1,5 @@
 ---
-name: agentx-tracing
+name: agentx-add-tracing
 description: >-
   Wire AgentX production tracing into an existing Python agent, end to end: read the project
   API key off the engine, write .env.agentx, install agentx-python from PyPI, initialise the
@@ -35,14 +35,45 @@ If the repo has no Python in it, say so plainly and stop rather than improvising
 
 ---
 
-## Do this
+## The workflow
 
-Follow `references/instrumentation-brief.md`, in order, against the repo you are inside. It
-is written to be executed and each phase ends in something checkable.
+Carry this out yourself, in order. Do not delegate it to a subagent. Anything the user typed
+after the command name is extra instruction: `$ARGUMENTS`.
+
+**1. Ask where the engine is, once.** See the next section. One question, before anything else,
+because that address decides where every trace lands and a wrong one does not error.
+
+**2. Survey the repo before touching it.**
+
+```bash
+<skill>/scripts/detect_stack.py .
+```
+
+Report what it found in three lines: the framework and its integration, the entry point a run
+begins at, and whether anything is already traced. Then:
+
+- **No Python files → stop.** The SDK is Python-only; say that rather than improvising.
+- **Already traced → do not re-instrument.** Extend what is there, and say so.
+- **Several plausible entry points → ask which one is the agent**, with AskUserQuestion, listing
+  the starred candidates. It is the one judgement the script cannot make, and getting it wrong
+  makes every trace a fragment or a duplicate. One obvious candidate means no question.
+
+**3. Key, dependency, bootstrap.** Pick the project (see below), install `agentx-python` with
+the extra `detect_stack.py` named, add it to the repo's manifest, and copy
+`<skill>/assets/agentx_tracing.py` into the repo. Copy that file; do not rewrite it from memory.
+Then check what you actually got:
+
+```bash
+<project-interpreter> <skill>/scripts/verify_trace.py --capabilities
+```
+
+Generate code against what that prints, not against a README.
+
+**4. Instrument.** Follow `references/instrumentation-brief.md`, phases 2 through 5, exactly.
 
 | Phase | What happens |
 |---|---|
-| 0 | Survey the repo - framework, entry points, whether it is already traced |
+| 0 | Survey - framework, entry points, whether it is already traced |
 | 1 | Key into `.env.agentx`, dependency installed, bootstrap module copied in |
 | 2 | One span at the entry point |
 | 3 | Auto-instrument the model client |
@@ -51,17 +82,34 @@ is written to be executed and each phase ends in something checkable.
 | 6 | Send a real trace and read it back |
 | 7 | Report what is traced and what is not |
 
-Three helpers do the parts that should not be improvised:
+Phase 5 - the list of things to leave alone - is as much of the job as the phases that add code.
+
+**5. Prove it with a real trace.**
+
+```bash
+<project-interpreter> <skill>/scripts/verify_trace.py
+```
+
+Then run the agent's own entry point once and look at what arrived: one trace per run, model and
+tool calls nested under it, `input` and `output` readable as a question and an answer, token
+counts present. **Do not report success on the strength of the diff** - the SDK does not raise
+when it is misconfigured, so the only evidence tracing works is a trace you fetched back.
+
+**6. Say what is traced, and what is not.** The entry point that became the span, the agent's
+name in the dashboard, the integration wired up and what it does not cover (streaming, in
+particular), what you deliberately left untraced, and the URL where the traces are.
+
+### The helpers
 
 ```bash
 <skill>/scripts/detect_stack.py .          # framework, entry points, existing instrumentation
-<skill>/scripts/agentx_key.py --write-env  # verified key, .env.agentx, gitignored
+<skill>/scripts/agentx_key.py --json       # engine verdict, verified key, project list
 <skill>/scripts/verify_trace.py            # send one trace, fetch it back by id
 <skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
 ```
 
-`<skill>/assets/agentx_tracing.py` is the bootstrap module to copy into the repo. Copy it; do not
-rewrite it from memory. What it guards against is in the brief's Phase 1c.
+`<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing` under the
+plugin, or wherever `npx skills add` unpacked it. Resolve it once and reuse it.
 
 ---
 

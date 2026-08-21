@@ -1,7 +1,7 @@
 # Instrumenting a repo, in order
 
 `<skill>` below is this skill's own directory. Installed as a Claude Code plugin that is
-`${CLAUDE_PLUGIN_ROOT}/skills/agentx-tracing`; installed standalone with `npx skills add`
+`${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing`; installed standalone with `npx skills add`
 it is wherever the agent unpacked the skill. Resolve it once and reuse it.
 
 Carry this out against the repo you are inside. Every phase ends in something checkable, and
