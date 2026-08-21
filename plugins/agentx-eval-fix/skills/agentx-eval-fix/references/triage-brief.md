@@ -1,8 +1,8 @@
 # Brief: triage an evaluation analysis against this code, then fix the code
 
 You are working inside a repo that holds an AI agent and the harness that
-evaluates it, scored by a local AgentX self-host engine (normally
-`http://localhost:4700`). An evaluation was run, a judge scored the answers, and
+evaluates it, scored by an AgentX self-host engine (`http://localhost:4700`
+unless `HOST` says otherwise). An evaluation was run, a judge scored the answers, and
 the resulting analysis export is under `eval-analysis/exports/`. Your job is to
 turn that export into the right code changes.
 
@@ -424,7 +424,9 @@ the rated count, the average, min and max, and every stored per-result rating.
 Print the base URL and the dataset id because together they make the log prove,
 by itself, that the run scored against the intended dataset on the intended
 engine. Those are the two most expensive things to get wrong here, and two lines
-remove the doubt.
+remove the doubt. The base URL earns its line even when it is the default: the
+engine can be anywhere `HOST` points, and "which engine" is invisible in every
+other part of the log.
 
 **Read the tail's numbers over HTTP, from the dashboard route.** The SDK is fine
 for running the evaluation and is the wrong tool for reading it back: its
@@ -434,7 +436,7 @@ array, and its `get_report()` route does not exist on self-host at all.
 ```python
 import json, os, urllib.request
 
-base = os.environ["AGENTX_API_BASE_URL"].rstrip("/")        # http://localhost:4700/api/v1
+base = os.environ["AGENTX_API_BASE_URL"].rstrip("/")        # e.g. http://localhost:4700/api/v1
 req = urllib.request.Request(f"{base}/evaluate/{run_id}")
 req.add_header("x-api-key", os.environ["AGENTX_API_KEY"])
 with urllib.request.urlopen(req, timeout=30) as resp:

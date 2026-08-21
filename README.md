@@ -11,7 +11,8 @@ evaluation ──► triage against the real source ──► mapping table ─�
 ```
 
 Built for [AgentX self-host](https://github.com/AgentX-ai/AgentX-trace-eval) —
-the local Trace/Evaluate/Monitor engine, `http://localhost:4700` by default.
+the Trace/Evaluate/Monitor engine you run yourself, `http://localhost:4700` by
+default and anywhere you like via [`HOST`](#pointing-it-at-another-engine).
 
 ## The problem it solves
 
@@ -135,6 +136,51 @@ before and after side by side.
 Without the plugin installed, the same thing in words still works — name the
 skill and the brief, and give it the id.
 
+### Pointing it at another engine
+
+The engine is assumed local, so nothing needs configuring until it is not. When it
+is somewhere else — a LAN box, a container, an SSH tunnel, a shared engine behind
+TLS — `HOST` is the one knob:
+
+```bash
+export AGENTX_HOST=https://evals.example.com     # or 192.168.1.50:4700, or my-box
+export AGENTX_API_KEY=<that engine's project key>
+```
+
+Unset means `http://localhost:4700`. A scheme-less value is completed from that
+default's shape (`192.168.1.50` → `http://192.168.1.50:4700`); a scheme you supply
+is left alone, so `https://` stays on 443 as a reverse proxy needs, and a path
+prefix survives for an engine mounted under one. For a single command there is
+`--host`, and `--base-url` still takes a full API base when it is not
+`<host>/api/v1`. First one set wins, most specific first:
+
+`--base-url` → `--host` → `$AGENTX_API_BASE_URL` → `$AGENTX_HOST` → `$HOST` →
+`http://localhost:4700`
+
+```bash
+python3 scripts/fetch_analysis.py --list --host https://evals.example.com
+```
+
+`--list` prints which engine answered, so it doubles as a check that you are
+reading the box you think you are.
+
+Two things to know once the engine is remote:
+
+- **A bare `HOST` needs a scheme.** `HOST=0.0.0.0` is what dev servers, container
+  images and Procfiles set for their *own* listener, and it lands in the
+  environment of everything started beside them. A hostname-shaped `HOST` is
+  therefore announced and ignored rather than followed into a port nothing serves;
+  `AGENTX_HOST` has no such ambiguity and is the one to reach for.
+- **Keys are per engine as well as per project.** A remote engine needs its own key
+  in `$AGENTX_API_KEY`; the local `~/.agentx/config.json` is the wrong file, which
+  the script verifies and says rather than failing later as a confusing 404.
+
+The re-run needs telling separately, because the harness under test reads
+`AGENTX_API_BASE_URL` through the AgentX SDK and knows nothing about `HOST`. The
+brief launches it as `AGENTX_API_BASE_URL="$AGENTX_HOST/api/v1" <run command>` for
+that reason: v1 and v2 have to be scored by the same engine or the comparison the
+whole workflow exists for is void.
+
 ### The analysis is the input, and it is a spend
 
 The recommendations this skill triages come from analysing the evaluation, so
@@ -167,7 +213,7 @@ thirty seconds:
 
 ## Requirements
 
-A running self-host engine, Python 3.9+, and git. `scripts/fetch_analysis.py`
+A running self-host engine — local, or anywhere `HOST` points — Python 3.9+, and git. `scripts/fetch_analysis.py`
 needs nothing beyond the standard library; `scripts/bootstrap.sh` builds a
 virtualenv for the repo under test when it needs one.
 

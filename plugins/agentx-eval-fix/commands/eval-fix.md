@@ -3,8 +3,8 @@ description: Triage an AgentX self-host evaluation against this repo's source an
 argument-hint: <evaluation-id> [extra instructions]
 ---
 
-Run the `agentx-eval-fix` workflow against evaluation **$1** on the local AgentX self-host
-engine, from the current repo.
+Run the `agentx-eval-fix` workflow against evaluation **$1** on the AgentX self-host
+engine, from the current repo. The engine is local unless `HOST` says otherwise.
 
 Additional instructions from the user (may be empty): $ARGUMENTS
 
@@ -19,7 +19,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/scripts/fetch_analysis.py $
 
 The script resolves the engine URL and the project key on its own and verifies the key
 before using it. If it reports no usable key, relay its message — it names where to get
-one — and stop rather than guessing.
+one — and stop rather than guessing. The engine defaults to `http://localhost:4700` and
+follows `HOST` (`--host`, `$AGENTX_API_BASE_URL`, `$AGENTX_HOST`, `$HOST`) when set, so
+if the user names an address, pass it as `--host <address>` rather than assuming local.
 
 Show the user the baseline numbers (average, **minimum**, variance, rated count) and how
 many recommendations came back, before going further.

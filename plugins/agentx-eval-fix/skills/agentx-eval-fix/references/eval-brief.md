@@ -1,8 +1,8 @@
 # Brief: re-run the evaluation and report the before-and-after
 
 You are working inside a repo that holds an AI agent and the harness that
-evaluates it, scored by a local AgentX self-host engine (normally
-`http://localhost:4700`). A previous run changed the agent's code based on a
+evaluates it, scored by an AgentX self-host engine (`http://localhost:4700`
+unless `HOST` says otherwise). A previous run changed the agent's code based on a
 triaged analysis of an earlier evaluation. Your job is to re-run that evaluation
 against **the same dataset** and report what moved.
 
@@ -47,21 +47,29 @@ consistency). Skip the prose; you are not re-doing the triage.
 
 Ordered by how expensive they are to miss.
 
-### 1. The base URL has to point at the local engine
+### 1. The base URL has to point at the engine that scored v1
 
 ```bash
-echo "base url: ${AGENTX_API_BASE_URL:-<unset>}"
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4700/health
+ENGINE="${AGENTX_HOST:-http://localhost:4700}"
+echo "base url: ${AGENTX_API_BASE_URL:-<unset>}   engine: $ENGINE"
+curl -s -o /dev/null -w '%{http_code}\n' "$ENGINE/health"
 ```
 
 **Unset is wrong here.** The AgentX SDK defaults to the hosted platform, so an
 unset base URL sends the whole run to production: a different database, a
 different dataset id space, a different bill, and a v2 number that cannot be
-compared to a v1 scored locally. It has to be
-`http://localhost:4700/api/v1` (or wherever the engine is actually listening).
+compared to a v1 scored on the self-host engine.
+
+**The right value is the Base URL row of the export's Identifiers table**, not
+localhost by reflex. The engine is local by default, but `HOST` can point it at a
+LAN box, a container or a shared engine behind TLS, and v1 was scored wherever that
+said at the time. Same engine as v1 or the two numbers are not a pair — a v2 run
+against a different engine is a different database, a dataset id that resolves to
+something else or to nothing, and no error either way.
 
 `/health` returning `200` is the engine answering. Anything else and it is not
-running — `agentx-server --dev`, or the container, before going further.
+running, or `HOST` names an address that is not it — `agentx-server --dev`, or the
+container, or the right address, before going further.
 
 This inverts the hosted advice, so check it even if you think you know.
 
@@ -106,8 +114,8 @@ What to do depends on where you are, and getting this backwards is destructive:
   this touches no history.
 - **On someone's own machine**, `.env` is their real configuration and holds their
   keys. **Do not delete it.** Override it for the one command instead:
-  `AGENTX_API_BASE_URL=http://localhost:4700/api/v1 ...`. Deleting it destroys
-  credentials you cannot restore.
+  `AGENTX_API_BASE_URL="${AGENTX_HOST:-http://localhost:4700}/api/v1" ...`.
+  Deleting it destroys credentials you cannot restore.
 
 If you cannot tell which situation you are in, you are on someone's machine.
 Treat the file as theirs.
@@ -127,7 +135,9 @@ Self-host splits them, and each is missed in its own way:
 - **The AgentX API key** (`AGENTX_API_KEY`) selects the project. An evaluation
   belongs to one project and is invisible under any other project's key. If a
   lookup 404s on an id you know exists, this is why:
-  `curl -s http://localhost:4700/api/v1/projects` lists them.
+  `curl -s "${AGENTX_HOST:-http://localhost:4700}/api/v1/projects"` lists them.
+  Keys are per engine as well as per project, so an engine reached over `HOST`
+  needs *that* engine's key, not the one in the local `~/.agentx/config.json`.
 
 Report and stop if any is missing, rather than improvising a fallback.
 
@@ -183,10 +193,17 @@ started" is easy to change by accident between two runs.
 
 ```bash
 mkdir -p .eval-logs
-AGENTX_API_BASE_URL=http://localhost:4700/api/v1 \
+AGENTX_API_BASE_URL="${AGENTX_HOST:-http://localhost:4700}/api/v1" \
 nohup <the repo's run command> > .eval-logs/eval-v2.log 2>&1 &
 echo "launched pid $!"
 ```
+
+**Pass the base URL explicitly, even when it is the default.** The harness reads
+`AGENTX_API_BASE_URL` through the SDK and knows nothing about `HOST`, so an engine
+you reached with `AGENTX_HOST` is an engine the harness will miss — it would send
+v2 to the hosted platform, or to whatever a stale `.env` still names, and score
+cleanly against the wrong database. Deriving one from the other on the launch line
+keeps the two halves of this workflow pointed at the same engine.
 
 For a Python harness that command is usually `.venv/bin/python -u <script>`, and
 **the `-u` is not optional**: without unbuffered output the log stays empty until
@@ -283,7 +300,7 @@ python3 <skill>/scripts/fetch_analysis.py <v2_run_id> --analyze \
 Or directly, if you would rather see the raw call:
 
 ```bash
-curl -s -X POST "http://localhost:4700/api/v1/evaluate/analyze/<v2_run_id>" \
+curl -s -X POST "${AGENTX_HOST:-http://localhost:4700}/api/v1/evaluate/analyze/<v2_run_id>" \
   -H "x-api-key: $AGENTX_API_KEY" -H "Content-Type: application/json" \
   -d '{"qualityMode":"balanced"}'
 ```
@@ -306,7 +323,7 @@ Write `eval-analysis/v2-report-<EVAL_ID>.md`:
 - Dataset id: <id>   (identical in both runs)
 - v1 evaluation id: <EVAL_ID>
 - v2 run id: <from the log>
-- Engine: http://localhost:4700
+- Engine: <the Base URL both runs used>
 - Status: complete | analysis_failed
 - Changes under test: eval-analysis/mapping-<EVAL_ID>.md
 
@@ -341,7 +358,7 @@ to think something regressed to nothing.
 ### Where to read the scores from
 
 ```bash
-curl -s "http://localhost:4700/api/v1/evaluate/<run_id>" -H "x-api-key: $AGENTX_API_KEY"
+curl -s "${AGENTX_HOST:-http://localhost:4700}/api/v1/evaluate/<run_id>" -H "x-api-key: $AGENTX_API_KEY"
 # .liveStatistics -> averageRating, minRating, maxRating, ratedCount
 # .results[]      -> per-question rating, justification, similarity, codeScorerResults
 ```

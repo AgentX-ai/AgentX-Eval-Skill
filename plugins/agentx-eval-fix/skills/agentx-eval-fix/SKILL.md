@@ -26,10 +26,11 @@ The report is not a to-do list. On a real export, two of five recommendations
 asked for things that already existed in the repo, and a third would have lowered
 the score. Treat its evidence as reliable and its recommendations as hypotheses.
 
-**This targets AgentX self-host only** — the local engine from AgentX-trace-eval,
-listening on `http://localhost:4700` by default. Its API is a different dialect
-from the hosted platform's, and several of the endpoints the hosted flow depends
-on do not exist here. Everything below is written against the local one.
+**This targets AgentX self-host only** — the engine from AgentX-trace-eval,
+listening on `http://localhost:4700` by default and wherever `HOST` says otherwise.
+Its API is a different dialect from the hosted platform's, and several of the
+endpoints the hosted flow depends on do not exist here. Everything below is written
+against the self-host one, local or not.
 
 ## Start here
 
@@ -76,17 +77,18 @@ Two values, and both have a default worth knowing.
 python3 <skill>/scripts/fetch_analysis.py --list
 ```
 
-That is the whole connection test. It resolves the base URL from
-`$AGENTX_API_BASE_URL`, falling back to `http://localhost:4700/api/v1`, and the
-key from `$AGENTX_API_KEY`, then from `~/.agentx/config.json` — which it verifies
-against the engine before using. If it prints evaluations, you are connected.
+That is the whole connection test. It resolves the address from `HOST`, falling
+back to `http://localhost:4700`, and the key from `$AGENTX_API_KEY`, then from
+`~/.agentx/config.json` — which it verifies against the engine before using. It
+prints the engine it reached on the first line, so the listing doubles as proof of
+*which* engine answered. If it prints evaluations, you are connected.
 
 Three things about this that cost a run each when assumed wrong:
 
 - **Keys are per project, and so is the data.** The key *is* the project
   selector; an evaluation belongs to exactly one project and is a 404 under
-  every other key. `curl -s http://localhost:4700/api/v1/projects` lists them all
-  with their keys, given any one project's key to authenticate with.
+  every other key. `curl -s "${AGENTX_HOST:-http://localhost:4700}/api/v1/projects"`
+  lists them all with their keys, given any one project's key to authenticate with.
 - **`~/.agentx/config.json` can be a different engine's key.** It records
   whichever engine last ran on this machine. A Docker instance keeps its database
   in its own volume and mints its own keys, so the file and the port disagree the
@@ -98,6 +100,52 @@ Three things about this that cost a run each when assumed wrong:
 - **Ids are nanoids**, e.g. `oE1YMG5wqmu4j2bhTtw1X`, not the 24-character hex ids
   the hosted platform uses. There is no filename to read one out of, so `--list`
   is how you find one.
+
+### The engine does not have to be local
+
+`HOST` is the one knob for that, and unset it means localhost, so the common case
+stays configuration-free. Set it to any address you can reach — a LAN box, a
+container, an SSH tunnel, a shared engine behind TLS:
+
+```bash
+export AGENTX_HOST=https://evals.example.com          # or 192.168.1.50:4700
+python3 <skill>/scripts/fetch_analysis.py --list
+```
+
+Most specific wins, and the first one set decides:
+
+| Source | What it says |
+|---|---|
+| `--base-url` | the full API base, when it is not `<host>/api/v1` |
+| `--host` | the address, for one command |
+| `$AGENTX_API_BASE_URL` | the full API base — also what the SDK and the harness read |
+| `$AGENTX_HOST` | the address, for the session |
+| `$HOST` | the same, but only when it carries a scheme (see below) |
+| nothing | `http://localhost:4700` |
+
+A scheme-less address is completed from the local default's shape, so
+`AGENTX_HOST=192.168.1.50` means `http://192.168.1.50:4700`, while a scheme you
+supply is left alone — `https://evals.example.com` stays on 443, as a reverse proxy
+needs it to. A path prefix survives too, for an engine mounted under one.
+
+**A bare `HOST` is only honoured when it carries a scheme.** `HOST=0.0.0.0` is what
+a dev server, a container image or a Procfile sets for *its own* listener, and it
+lands in the environment of everything started beside it. Following one silently
+would point this at a port nothing serves and then report the engine as down, so an
+address-shaped `HOST` is used, a hostname-shaped one is announced and ignored, and
+`AGENTX_HOST` is the unambiguous way to say you meant this engine.
+
+Two things follow from pointing anywhere but localhost:
+
+- **The key travels with the engine.** Keys are per project *and* per engine, so a
+  remote engine needs a key minted by that engine in `$AGENTX_API_KEY`. The local
+  `~/.agentx/config.json` is then exactly the wrong file — which is the same trap
+  as above, one step worse, and the script still catches it by verifying the key
+  before use rather than half-working.
+- **The harness needs telling separately.** `HOST` steers this skill's own reads.
+  The repo under test reads `$AGENTX_API_BASE_URL` through the SDK, so a re-run
+  needs `AGENTX_API_BASE_URL=$AGENTX_HOST/api/v1` exported for it too, or v2 scores
+  against a different engine than v1 and the comparison is void.
 
 ## Getting the analysis
 
@@ -231,7 +279,9 @@ repeating because they are the expensive failures:
 - **Check the dataset id and the base URL before launching.** A harness handed no
   dataset id publishes a brand new one and scores against freshly created
   questions; a harness with `AGENTX_API_BASE_URL` unset talks to the hosted
-  platform instead of your engine. Neither errors.
+  platform instead of your engine, and one still holding an old value talks to a
+  different engine than the one `HOST` pointed the triage at. Neither errors. The
+  export's Identifiers table names the engine v1 ran on; v2 has to match it.
 - **`.analyze()` against self-host depends on the versions in play.** It posts to
   `/custom-agent-evaluations/runs/{id}/analyze`, which older engines do not implement
   and which older SDKs do not fall back from — and the SDK swallows the failure, so the

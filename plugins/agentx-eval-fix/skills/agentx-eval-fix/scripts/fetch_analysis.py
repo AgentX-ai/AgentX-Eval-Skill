@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """
-Pull an evaluation and its AI Analysis out of a local AgentX self-host engine.
+Pull an evaluation and its AI Analysis out of an AgentX self-host engine.
 
     python3 fetch_analysis.py --list
     python3 fetch_analysis.py <evaluation_id>
     python3 fetch_analysis.py <evaluation_id> --write-export eval-analysis/exports/
     python3 fetch_analysis.py <evaluation_id> --analyze          # spends judge calls
+    python3 fetch_analysis.py --list --host https://evals.example.com   # elsewhere
+
+The engine is local unless you say otherwise. `HOST` is the one knob for that:
+unset it means `http://localhost:4700`, set it can be any address you can reach -
+a LAN box, a container, a tunnel, a shared engine behind TLS. Most specific wins:
+`--base-url`, then `--host`, then `$AGENTX_API_BASE_URL`, `$AGENTX_HOST`, `$HOST`.
 
 Talks HTTP to the engine directly and needs nothing but the standard library: no
 `agentx-python`, no `python-dotenv`, no virtualenv. That is deliberate. This runs
@@ -51,13 +57,18 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-DEFAULT_BASE_URL = "http://localhost:4700/api/v1"
+DEFAULT_HOST = "http://localhost:4700"
+DEFAULT_PORT = 4700
+DEFAULT_BASE_URL = f"{DEFAULT_HOST}/api/v1"
 
 # nanoid's default alphabet and length. Nothing enforces 21 characters at the API,
 # so the bound is loose; the point is only to reject an id that was pasted out of
 # the wrong field before it becomes a 404 later on.
 _ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 _HOSTED_ID = re.compile(r"[0-9a-f]{24}")
+
+# The engine's API root, wherever it has been mounted.
+_API_ROOT = re.compile(r"/api/v\d+/?$")
 
 
 class EngineError(RuntimeError):
@@ -69,8 +80,75 @@ class EngineError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
-def resolve_base_url(explicit: str | None) -> str:
-    base = (explicit or os.getenv("AGENTX_API_BASE_URL") or DEFAULT_BASE_URL).strip().rstrip("/")
+def normalize_host(value: str) -> str:
+    """Turn whatever someone put in HOST into an origin this script can talk to.
+
+    All four of `http://localhost:4700`, `localhost:4700`, `my-box` and
+    `https://evals.example.com` are things people write, and only two of them are
+    addresses already. A missing scheme means the port is usually missing too - that
+    is someone naming a machine rather than an address - so both defaults come from
+    the local engine's shape. A scheme that is present is left entirely alone: a
+    `https://` host behind a reverse proxy is on 443 and inventing :4700 for it would
+    turn a working address into a hang.
+    """
+    host = value.strip().rstrip("/")
+    if "://" not in host:
+        parts = urlsplit(f"http://{host}")
+        # Read the port off the text rather than parts.port, which raises on a
+        # malformed one - and a malformed port is still a port the user typed, so
+        # appending another would only make the eventual error less readable.
+        has_port = ":" in parts.netloc.rsplit("@", 1)[-1].rsplit("]", 1)[-1]
+        netloc = parts.netloc if has_port else f"{parts.netloc}:{DEFAULT_PORT}"
+        host = parts._replace(netloc=netloc).geturl()
+    return host
+
+
+def resolve_host(explicit: str | None) -> tuple[str, str]:
+    """Returns (origin, where it came from). Unset is localhost, which is the whole
+    point of the default: the common case needs no configuration, and anything else is
+    you saying where the engine actually is."""
+    if explicit:
+        return normalize_host(explicit), "--host"
+
+    from_env = (os.getenv("AGENTX_HOST") or "").strip()
+    if from_env:
+        return normalize_host(from_env), "$AGENTX_HOST"
+
+    # A bare HOST is honoured too, because that is the name people reach for, but only
+    # when it carries a scheme. `HOST=0.0.0.0` and `HOST=127.0.0.1` are what a dev
+    # server, a container image or a Procfile sets for its own listener, and those land
+    # in the environment of anything started beside them. Following one silently would
+    # point this at a port nothing is serving and report it as the engine being down.
+    bare = (os.getenv("HOST") or "").strip()
+    if bare:
+        if "://" in bare:
+            return normalize_host(bare), "$HOST"
+        print(
+            f"note: ignoring HOST={bare!r} - no scheme, so it is more likely some other\n"
+            f"      process's listen address than an AgentX engine. Write it as\n"
+            f"      HOST=http://{bare}, or use AGENTX_HOST={bare}, to mean this engine.",
+            file=sys.stderr,
+        )
+    return DEFAULT_HOST, "default"
+
+
+def resolve_base_url(explicit: str | None, host: str | None = None) -> tuple[str, str]:
+    """Returns (base url, where it came from).
+
+    Most specific wins: an explicit base url names the router as well as the address,
+    so it beats a host, which names only the address. `$AGENTX_API_BASE_URL` sits above
+    the host variables for the same reason, and because a repo that already exports it
+    is a repo whose harness and whose triage should agree on where they are pointed.
+    """
+    source = "--base-url"
+    base = (explicit or "").strip()
+    if not base and host:
+        base, source = normalize_host(host), "--host"
+    if not base:
+        base, source = (os.getenv("AGENTX_API_BASE_URL") or "").strip(), "$AGENTX_API_BASE_URL"
+    if not base:
+        base, source = resolve_host(None)
+    base = base.rstrip("/")
 
     # A repo already pointed at self-host may hold either form, because the Python
     # SDK appends /custom-agent-evaluations to whatever AGENTX_API_BASE_URL says
@@ -79,10 +157,17 @@ def resolve_base_url(explicit: str | None) -> str:
         base = base[: -len("/custom-agent-evaluations")]
 
     # A bare origin is the other thing people paste, since that is what the browser
-    # shows them.
-    if urlsplit(base).path in ("", "/"):
+    # shows them - and it is all a HOST usually is.
+    path = urlsplit(base).path
+    if path in ("", "/"):
         base = f"{base}/api/v1"
-    return base
+    elif source not in ("--base-url", "$AGENTX_API_BASE_URL") and not _API_ROOT.search(path):
+        # A host given with a path prefix is a host behind a reverse proxy that mounts
+        # the engine under a subpath - `https://tools.example.com/agentx`. The API root
+        # still hangs off it, so the prefix is kept and /api/v1 goes on the end. Only
+        # host-sourced values get this: a base url naming a path meant that path.
+        base = f"{base}/api/v1"
+    return base, source
 
 
 def _key_works(base_url: str, key: str) -> bool:
@@ -184,7 +269,8 @@ def _request(
     except urllib.error.URLError as exc:
         raise EngineError(
             f"cannot reach the engine at {base_url} ({exc.reason}). Start it with "
-            f"`agentx-server --dev`, or point --base-url at wherever it is listening."
+            f"`agentx-server --dev`, or point --host (or $AGENTX_HOST) at wherever it "
+            f"is actually listening - it does not have to be this machine."
         ) from exc
     except ValueError as exc:
         raise EngineError(f"{path} did not return JSON: {exc}") from exc
@@ -652,7 +738,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("evaluation_id", nargs="?", help="evaluation / run id (nanoid, e.g. oE1YMG5wqmu4j2bhTtw1X)")
     ap.add_argument("--list", action="store_true", help="list recent evaluations and exit")
-    ap.add_argument("--base-url", help=f"engine API base (default: $AGENTX_API_BASE_URL or {DEFAULT_BASE_URL})")
+    # One address, two ways to write it, so taking both at once could only mean the user
+    # believes one of them is doing something it is not.
+    where = ap.add_mutually_exclusive_group()
+    where.add_argument("--host", help=f"engine address, e.g. https://evals.example.com (default: $AGENTX_HOST, $HOST, or {DEFAULT_HOST})")
+    where.add_argument("--base-url", help=f"engine API base, when it is not <host>/api/v1 (default: $AGENTX_API_BASE_URL)")
     ap.add_argument("--api-key", help="project API key (default: $AGENTX_API_KEY, then a verified ~/.agentx/config.json)")
     ap.add_argument("--write-export", type=Path, metavar="DIR", help="render a markdown export into DIR for the triage to read")
     ap.add_argument("--field", help="print one value bare, e.g. dataset_id")
@@ -663,10 +753,14 @@ def main() -> int:
     args = ap.parse_args()
 
     try:
-        base_url = resolve_base_url(args.base_url)
+        base_url, base_url_source = resolve_base_url(args.base_url, args.host)
         api_key, key_source = resolve_api_key(args.api_key, base_url)
 
         if args.list:
+            # The listing is also the connection test, so name the engine it came from:
+            # "no evaluations" and "no evaluations *here*" are different problems, and
+            # the second one is the one a HOST typo produces.
+            print(f"engine: {base_url} (from {base_url_source}), key from {key_source}", file=sys.stderr)
             rows = list_evaluations(base_url, api_key, 20)
             if not rows:
                 print(f"no evaluations under the key from {key_source}.", file=sys.stderr)
