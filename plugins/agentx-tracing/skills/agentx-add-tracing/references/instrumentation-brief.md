@@ -45,32 +45,52 @@ a fragment or a duplicate.
 
 ## Phase 1 - Key, then dependency, then bootstrap
 
-### 1a. The key
+### 1a. Identify the engine and pick the project
+
+```bash
+python3 <skill>/scripts/agentx_key.py --host <address> --json --limit 8
+```
+
+One call. It probes `/auth/config` unauthenticated, reports what kind of engine answered,
+resolves a key, and - when the engine allows it - returns the project list you are about to
+ask about. Read three fields off the JSON:
+
+| Field | What to do with it |
+|---|---|
+| `engine_kind` / `auth_mode` | `self-host` + `disabled` is the common case and the only one where projects can be enumerated |
+| `can_list_projects` | `true` → ask the user. `false` → say why (`reason`) in one line and move on |
+| `projects[]` | the options: `name`, `isDefault`, `keyMasked` |
+
+**When `can_list_projects` is true, ask with AskUserQuestion. Do not take the default
+silently.** The key *is* the project selector - a trace is visible to its own project's key and
+to no other - and there is no way to move traces afterwards. Put the engine's default first and
+marked as such, and add two things to the question:
+
+- **The project the repo's evaluations already use, recommended**, when `detect_stack.py` found
+  an eval harness. Traces and runs in different projects never appear next to each other.
+- **"A new project for this app"**, when the engine is self-host in disabled mode. Say in the
+  option's own description that it writes a project row **the engine cannot delete**.
+
+Then write it:
 
 ```bash
 python3 <skill>/scripts/agentx_key.py \
-  --host <address> --list-projects
-python3 <skill>/scripts/agentx_key.py \
-  --host <address> --write-env .env.agentx --project <id-or-name>
+  --host <address> --write-env .env.agentx --project <id>
 ```
 
-The script resolves a key from `$AGENTX_API_KEY`, then `~/.agentx/config.json`, **verifying
-each against the engine you named** before it is used, and writes the selected project's key
-plus `AGENTX_API_BASE_URL` to `.env.agentx` at mode 0600, adding the file to `.gitignore`.
+Prefer the id. Project names are not unique on self-host, and the script refuses an ambiguous
+name rather than guessing which one you meant.
 
-Never print a key. The script masks every key it displays and writes the chosen one straight
-to disk, so the secret never enters the transcript. If you find yourself about to `cat
+The key itself resolves from `--api-key`, then `$AGENTX_API_KEY`, then `~/.agentx/config.json`,
+then the engine's own handout - **each verified against the engine you named** before it is
+used. On self-host in disabled mode `/auth/config` returns the default project's key outright,
+which is what makes a cold start work with no environment variable and nothing to paste. It is
+last in that order deliberately: it is always the *default* project, which is right for a fresh
+install and wrong for anyone who has already chosen where their data goes.
+
+Never print a key. The script masks every key it displays and writes the chosen one straight to
+disk, so the secret never enters the transcript. If you find yourself about to `cat
 .env.agentx`, don't - `agentx_key.py` will tell you what you want to know without it.
-
-**Which project matters more than it looks.** The key *is* the project selector: a trace is
-visible to its own project's key and to no other. If the repo also runs evaluations, put the
-traces in that same project, or the two will never appear next to each other.
-
-If nothing resolves, the script prints where a key actually comes from for that engine. It
-will not invent one. `GET /dev/bootstrap` was removed from the engine deliberately, so there
-is no unauthenticated handout to call; on self-host in its default auth mode you can mint a
-fresh project with `--create-project <name>`, which **creates a row the engine cannot delete**
-- so offer it, and do not reach for it on your own.
 
 ### 1b. The dependency
 

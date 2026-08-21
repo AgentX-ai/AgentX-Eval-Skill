@@ -62,9 +62,10 @@ From inside the repo that holds your agent:
 /agentx-add-tracing
 ```
 
-It asks one question up front — which engine, `local` by default — and one more only if the
-repo has several plausible entry points. Then it surveys, wires, and proves it with a trace
-it fetched back by id.
+It asks at most three questions and no more: which engine (`local` by default), which entry
+point — only when the repo has several plausible ones — and which project the traces go under,
+only when the engine can list them. Then it surveys, wires, and proves it with a trace it
+fetched back by id.
 
 ## What it writes into your repo
 
@@ -94,16 +95,31 @@ or the hosted platform. The scripts need nothing beyond the standard library; th
 test needs `agentx-python` from PyPI, which the skill installs with whichever extra its
 framework calls for.
 
-Project API keys are **copy-pasted, not fetched** — the engine deliberately removed its old
-unauthenticated `/dev/bootstrap` handout. `agentx_key.py` reads `$AGENTX_API_KEY`, then
-`~/.agentx/config.json`, verifying each against the engine you named before it is used,
-because that file records whichever engine last ran on the machine and not necessarily the
-one you are talking to. On self-host in its default auth mode it can also mint a fresh
-project with `--create-project`, which the skill offers as a choice and never as a fallback,
-because the engine serves no way to delete one afterwards.
+## Which project the traces go under
 
-No key is ever printed. The scripts mask what they display and write the selected one
-straight to disk.
+`agentx_key.py` opens with one unauthenticated call to `/auth/config`, and that answer decides
+everything downstream:
+
+| Engine | Key without asking? | Choose a project? |
+|---|---|---|
+| self-host, `AGENTX_AUTH=disabled` (the default) | yes — the route returns the default project's key | **yes**, `/projects` lists every project with its key |
+| self-host, `AGENTX_AUTH=enabled` | no | no — listing needs a signed-in session |
+| hosted (`api.agentx.so`) | no | no — the key selects the workspace |
+
+On the common row, the skill **asks** which project rather than taking the default. The key
+*is* the project selector: every trace lands in exactly one project, is invisible under every
+other key, and nothing moves it afterwards. When the repo already runs AgentX evaluations, that
+project is the recommended answer — traces and runs in different projects never appear next to
+each other. "A new project for this app" is offered too, with the fact that the engine cannot
+delete one stated where the choice is made, not in a footnote.
+
+The key itself resolves from `$AGENTX_API_KEY`, then `~/.agentx/config.json`, then the engine's
+own handout — each **verified against the engine you named** before use, because that file
+records whichever engine last ran on the machine and not necessarily the one you are talking to.
+The handout is last on purpose: it is always the *default* project.
+
+No key is ever printed. The scripts mask what they display and write the selected one straight
+to disk at mode 0600, gitignored.
 
 ## What's in here
 

@@ -59,19 +59,34 @@ there is an obvious single starred candidate, do not ask at all.
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/agentx_key.py \
-  --host <the address from step 1> --list-projects
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/agentx_key.py \
-  --host <the address from step 1> --write-env .env.agentx --project <id-or-name>
+  --host <the address from step 1> --json --limit 8
 ```
 
-The script verifies every candidate key against that engine before using it, writes
-`.env.agentx` at mode 0600, and adds it to `.gitignore`. **Never print a key** - the scripts
-mask what they display and write the chosen one straight to disk.
+One call: it probes `/auth/config` unauthenticated, says what kind of engine answered, resolves
+and verifies a key, and returns the project list when the engine allows one.
 
-If the repo already runs AgentX evaluations, put the traces in that same project, or the two
-halves never appear next to each other. If no key resolves, relay the script's message: it
-names where a key actually comes from. Only offer `--create-project` as an explicit choice -
-it writes a project row the engine cannot delete.
+**If `can_list_projects` is true, ask with AskUserQuestion which project the traces go under.**
+The last question in the run, and not optional politeness: the key *is* the
+project selector, every trace lands in exactly one project and is invisible under every other
+key, and nothing can move them afterwards. Build the options from `projects[]` with the engine's
+default first and marked as such. Add the project the repo's evaluations already use, marked
+recommended, when step 2 found an eval harness - traces and runs in different projects never
+appear next to each other. Add "a new project for this app" when the engine is self-host in
+disabled mode, saying in that option's description that it writes a project row **the engine
+cannot delete**.
+
+**If `can_list_projects` is false, do not ask.** Say in one line what `reason` says - a hosted
+workspace or an auth-enabled engine fixes the destination by key alone - and carry on.
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/scripts/agentx_key.py \
+  --host <the address from step 1> --write-env .env.agentx --project <id>
+```
+
+Prefer the id: project names are not unique on self-host. The script writes `.env.agentx` at
+mode 0600 and adds it to `.gitignore`. **Never print a key** - the scripts mask what they
+display and write the chosen one straight to disk. If no key resolves, relay the script's
+message: it names where a key actually comes from for that engine.
 
 Then install `agentx-python` (with the extra `detect_stack.py` named), add it to the repo's
 manifest, and copy `${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing/assets/agentx_tracing.py`

@@ -89,24 +89,63 @@ answer, not a mistake to correct.**
 
 ---
 
-## Where the key comes from
+## Identify the engine, then ask which project
 
-The key is the project selector. Every trace lands in exactly one project - the one whose key
-sent it - and is invisible to every other key. Two consequences worth stating out loud:
+`agentx_key.py` opens with one unauthenticated call to `/auth/config`, and that single answer
+decides everything downstream: which engine this is, whether a key can be had without asking,
+and **whether the user gets to choose a project at all**.
 
-- **If the repo also runs evaluations, use that same project's key.** Otherwise the traces and
-  the runs exist in different places and never appear next to each other, which defeats most
-  of the reason to have both.
+| Engine | `/auth/config` says | Key without asking? | Choose a project? |
+|---|---|---|---|
+| self-host, `AGENTX_AUTH=disabled` (the default) | `mode: disabled` **plus the default project's key** | yes, that key | **yes** - `/projects` returns every project with its key |
+| self-host, `AGENTX_AUTH=enabled` | `mode: enabled`, no key | no | no - listing needs a signed-in session, so the dashboard picks |
+| hosted (`api.agentx.so`) | no such route | no | no - the key selects the workspace on its own |
+
+The script reports which row it is on, in words, on its first two lines of stderr.
+
+### When projects can be listed, ask - do not just take the default
+
+**This is an AskUserQuestion, and it is the one place the user's intent cannot be inferred.**
+The key *is* the project selector: every trace lands in exactly one project, the one whose key
+sent it, and is invisible under every other key. Defaulting silently puts a month of a
+production agent's traffic somewhere the user did not choose, and there is no move command.
+
+Run the script once with `--json` - it returns the engine's verdict and the project list in the
+same call - then ask, with the engine's default marked as such:
+
+```bash
+<skill>/scripts/agentx_key.py --host <address> --json --limit 8
+```
+
+Build the options from `projects[]`: name, and `(default)` where `isDefault`. Two more things
+belong in that question:
+
+- **If the repo already runs AgentX evaluations, recommend that project** and say why in the
+  option description - traces and runs in different projects never appear next to each other,
+  which defeats most of the reason to have both. `detect_stack.py` tells you when that is the
+  case.
+- **Offer "a new project for this app"** when the engine is self-host in disabled mode, since
+  `--create-project <name>` works there without credentials. Say in the description that it
+  **writes a project row the engine cannot delete** - that is a real consequence, not a
+  footnote, and it belongs where the user is deciding.
+
+Then pass the answer through: `--write-env .env.agentx --project <id>`. Prefer the id; project
+names are not unique on self-host, and the script refuses an ambiguous name rather than
+guessing.
+
+**When projects cannot be listed, do not ask.** Say in one line which row of the table you are
+on and that the key already fixes the destination, then move on. A question the user cannot act
+on is worse than no question.
+
+### Two traps in key resolution
+
 - **`~/.agentx/config.json` records whichever engine last ran on this machine**, which need not
   be the engine you are pointing at. A Docker instance keeps its database in its own volume and
-  mints its own keys. `agentx_key.py` verifies every candidate with a real authenticated read
-  before using it, and reports a stale one as stale rather than writing it into the project.
-
-There is no unauthenticated key handout to call. `GET /dev/bootstrap` was removed from the
-engine deliberately, with a test asserting it 404s. Keys come from the engine's startup log
-(`Default project API key: ...`), from the dashboard, or - on self-host in its default auth
-mode - from `agentx_key.py --create-project <name>`, which mints one. **That last one writes a
-project row the engine cannot delete**, so offer it as a choice and never as a fallback.
+  mints its own keys. Every candidate is verified with a real authenticated read before use, and
+  a stale one is reported as stale rather than written into the project.
+- **The engine's handout is always the *default* project.** Right for a fresh install, wrong for
+  anyone who has already chosen where their data goes - which is exactly why it is last in the
+  resolution order, and why the question above exists.
 
 **Never print a key.** The scripts mask every key they display and write the selected one
 straight to disk, so the secret goes from the engine to `.env.agentx` without passing through

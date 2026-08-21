@@ -18,11 +18,18 @@ when assumed instead:
    `--list-projects` masks them, and `--write-env` writes the selected one straight to
    disk, so the secret goes from the engine to the file without a transcript in between.
 
-There is no unauthenticated key handout to call: `GET /dev/bootstrap` was removed from the
-engine deliberately, with a test asserting it 404s. What self-host does still offer, in its
-default `AGENTX_AUTH=disabled` mode, is unauthenticated project *creation* - `--create-project`
-below - which mints a fresh key. That writes a row nothing can delete afterwards, so it is
-opt-in and never a fallback this script reaches for on its own.
+`GET /api/v1/auth/config` is how this script identifies an engine, and on self-host it is also
+the cold-start key source. It is unauthenticated, and in the default `AGENTX_AUTH=disabled`
+mode it returns the default project's key outright - the same handout the dashboard uses to
+land on a working screen with no paste-the-key step. (Its predecessor `GET /dev/bootstrap` was
+removed, with a test asserting it 404s; this route replaced it.) Under `AGENTX_AUTH=enabled` no
+key is ever handed out, and the hosted platform serves no such route at all - so the same probe
+answers three questions at once: which engine this is, whether it can enumerate projects, and
+whether a key can be had without asking.
+
+Project *creation* is unauthenticated too in disabled mode - `--create-project` below - and
+mints a fresh key. That writes a row nothing can delete afterwards, so it is opt-in and never
+a fallback this script reaches for on its own.
 
 Usage:
   agentx_key.py                                   # resolve a key and say where it came from
@@ -139,14 +146,73 @@ def key_works(base_url: str, key: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Engine identification
+# ---------------------------------------------------------------------------
+def describe_engine(base_url: str) -> dict:
+    """Who is answering, and can a key enumerate projects here?
+
+    One unauthenticated call to `/auth/config` settles all of it. Self-host answers with a
+    `mode`; the hosted platform has no such route. That distinction is what decides whether
+    the user gets to *choose* a project at all:
+
+    | engine                          | /projects with a key            | choose a project? |
+    |---------------------------------|---------------------------------|-------------------|
+    | self-host, AGENTX_AUTH=disabled | lists every project, with keys  | yes               |
+    | self-host, AGENTX_AUTH=enabled  | 401, needs a signed-in session  | no - dashboard    |
+    | hosted (api.agentx.so)          | no such route                   | no - key selects  |
+    """
+    info = {"kind": "unknown", "auth_mode": None, "default_key": None,
+            "can_list_projects": False, "reason": ""}
+
+    if is_hosted(base_url):
+        info.update(kind="hosted", can_list_projects=False,
+                    reason="the hosted platform serves no /projects route - the API key "
+                           "selects the workspace on its own")
+        return info
+
+    try:
+        status, payload = request(base_url, "/auth/config")
+    except ConnectionError:
+        raise
+
+    if status != 200 or not isinstance(payload, dict) or "mode" not in payload:
+        info.update(kind="unknown", can_list_projects=False,
+                    reason=f"this engine did not answer /auth/config (HTTP {status}), so it is "
+                           f"not a self-host engine this script recognises")
+        return info
+
+    mode = payload.get("mode")
+    info["kind"] = "self-host"
+    info["auth_mode"] = mode
+    # Only disabled mode hands out a key, and only the default project's.
+    info["default_key"] = payload.get("apiKey")
+    if mode == "disabled":
+        info.update(can_list_projects=True, reason="")
+    else:
+        info.update(can_list_projects=False,
+                    reason="this engine runs with AGENTX_AUTH=enabled, where listing projects "
+                           "needs a signed-in session rather than a key. Pick the project in "
+                           "the dashboard and use its key")
+    return info
+
+
+# ---------------------------------------------------------------------------
 # Key resolution
 # ---------------------------------------------------------------------------
 def config_path() -> Path:
     return Path(os.getenv("AGENTX_HOME", str(Path.home() / ".agentx"))) / "config.json"
 
 
-def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str | None, str, list[str]]:
-    """(key, where-it-came-from, what-was-tried-and-failed). Every candidate is verified."""
+def resolve_api_key(explicit: str | None, base_url: str,
+                    engine: dict | None = None) -> tuple[str | None, str, list[str]]:
+    """(key, where-it-came-from, what-was-tried-and-failed). Every candidate is verified.
+
+    Ordered by how specific the intent behind it is. Something the user typed beats something
+    their shell remembers, which beats a file recording whichever engine last ran here, which
+    beats the engine's own default. The engine's handout is last precisely because it is always
+    the *default* project - correct for a fresh install, wrong for anyone who has already
+    chosen where their data goes.
+    """
     tried: list[str] = []
 
     candidates: list[tuple[str, str]] = []
@@ -164,6 +230,8 @@ def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str | None, st
             tried.append(f"{cfg} is not readable JSON")
         if from_file:
             candidates.append((from_file, str(cfg)))
+    if engine and engine.get("default_key"):
+        candidates.append((engine["default_key"], "GET /auth/config (this engine's default project)"))
 
     for key, source in candidates:
         if key_works(base_url, key):
@@ -171,7 +239,8 @@ def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str | None, st
         tried.append(f"{source} holds a key this engine rejects")
 
     if not candidates:
-        tried.append("$AGENTX_API_KEY is unset and there is no ~/.agentx/config.json")
+        tried.append("$AGENTX_API_KEY is unset, there is no ~/.agentx/config.json, and this "
+                     "engine hands out no key")
     return None, "", tried
 
 
@@ -286,14 +355,32 @@ def main() -> int:
     args = ap.parse_args()
 
     base_url = resolve_base_url(args.host, args.base_url)
-    print(f"engine: {engine_root(base_url)}", file=sys.stderr)
 
-    out: dict = {"base_url": base_url, "engine": engine_root(base_url)}
+    # Identify the engine before anything else. It decides where a key can come from and
+    # whether the user gets to choose a project at all.
+    try:
+        engine = describe_engine(base_url)
+    except ConnectionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        print("Start the engine, or name the right address with --host.", file=sys.stderr)
+        return 2
+
+    kind = engine["kind"] + (f" (auth {engine['auth_mode']})" if engine["auth_mode"] else "")
+    print(f"engine: {engine_root(base_url)} - {kind}", file=sys.stderr)
+    if not engine["can_list_projects"]:
+        print(f"  no project choice here: {engine['reason']}", file=sys.stderr)
+
+    out: dict = {"base_url": base_url, "engine": engine_root(base_url),
+                 "engine_kind": engine["kind"], "auth_mode": engine["auth_mode"],
+                 "can_list_projects": engine["can_list_projects"],
+                 "reason": engine["reason"]}
 
     if args.create_project:
-        if is_hosted(base_url):
-            raise SystemExit("--create-project is a self-host route. On the hosted platform, "
-                             "create the project at app.agentx.so and copy its key.")
+        if engine["kind"] != "self-host" or engine["auth_mode"] != "disabled":
+            raise SystemExit(
+                f"this engine cannot create a project without authentication "
+                f"({engine['reason'] or 'not a self-host engine in its default auth mode'}). "
+                f"Create it from the dashboard instead, then copy its key.")
         project = create_project(base_url, args.create_project)
         key = project.get("apiKey", "")
         print(f"created project {project.get('name')!r} ({project.get('_id')}), key {mask(key)}", file=sys.stderr)
@@ -313,7 +400,7 @@ def main() -> int:
         return 0
 
     try:
-        key, source, tried = resolve_api_key(args.api_key, base_url)
+        key, source, tried = resolve_api_key(args.api_key, base_url, engine)
     except ConnectionError as exc:
         print(f"error: {exc}", file=sys.stderr)
         print("Start the engine, or name the right address with --host.", file=sys.stderr)
@@ -324,7 +411,7 @@ def main() -> int:
         for line in tried:
             print(f"  - {line}", file=sys.stderr)
         print("\nA key comes from the engine you are pointing at, and only from there:", file=sys.stderr)
-        if is_hosted(base_url):
+        if engine["kind"] == "hosted":
             print("  - app.agentx.so, under your workspace settings", file=sys.stderr)
         else:
             print(f"  - the engine's startup log: 'Default project API key: ...'", file=sys.stderr)
@@ -336,14 +423,23 @@ def main() -> int:
     print(f"key: {mask(key)} (from {source}), verified against this engine", file=sys.stderr)
     out.update(key_source=source, key_masked=mask(key))
 
-    projects = list_projects(base_url, key)
+    projects = list_projects(base_url, key) if engine["can_list_projects"] else []
+    if projects:
+        ordered_all = sorted(projects, key=lambda p: not p.get("isDefault"))
+        out["project_count"] = len(projects)
+        # Always in the JSON, capped: this is what the caller builds the "which project?"
+        # question from, and it should not need a second invocation to get it.
+        out["projects"] = [{"id": p.get("_id"), "name": p.get("name"),
+                            "isDefault": bool(p.get("isDefault")),
+                            "keyMasked": mask(p.get("apiKey", ""))}
+                           for p in ordered_all[: max(1, args.limit)]]
     if args.list_projects:
         # Capped, default first. An engine that has been used for a while accumulates projects
         # faster than anyone wants to read, and the whole list in a transcript is noise around
         # the one line that matters.
         if not projects:
-            print("this engine did not list projects for that key "
-                  "(the hosted platform does not serve /projects)", file=sys.stderr)
+            print(f"no projects to choose from: {engine['reason'] or 'this key listed none'}",
+                  file=sys.stderr)
         ordered = sorted(projects, key=lambda p: not p.get("isDefault"))
         shown = ordered[: max(1, args.limit)]
         for p in shown:
@@ -352,9 +448,6 @@ def main() -> int:
         if len(ordered) > len(shown):
             print(f"  ... and {len(ordered) - len(shown)} more (--limit to show them, "
                   f"--project <id> to select one by id)", file=sys.stderr)
-        out["projects"] = [{"id": p.get("_id"), "name": p.get("name"), "isDefault": bool(p.get("isDefault"))}
-                           for p in shown]
-        out["project_count"] = len(projects)
 
     if args.write_env:
         chosen_key, chosen_name = key, None
