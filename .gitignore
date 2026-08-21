@@ -1,1 +1,6 @@
 __pycache__/
+
+# `npx skills add` installs a copy of these skills back into whatever repo it is run
+# from. In this one that is a duplicate of the source, never something to commit.
+.agents/skills/
+skills-lock.json
