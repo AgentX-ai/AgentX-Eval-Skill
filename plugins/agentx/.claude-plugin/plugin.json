@@ -1,0 +1,19 @@
+{
+  "name": "agentx",
+  "version": "2.0.0",
+  "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-add-tracing instruments a Python agent; /eval-fix triages an evaluation against the source and re-runs it.",
+  "author": {
+    "name": "AgentX",
+    "email": "marcin@agentx.so"
+  },
+  "homepage": "https://github.com/AgentX-ai/AgentX-Eval-Skill",
+  "keywords": [
+    "agentx",
+    "tracing",
+    "observability",
+    "evaluation",
+    "llm-judge",
+    "self-host",
+    "agent-testing"
+  ]
+}
