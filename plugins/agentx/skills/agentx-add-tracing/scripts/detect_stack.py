@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -62,6 +63,45 @@ ENTRYPOINT_LIBS = {
 }
 
 MANIFESTS = ("requirements.txt", "pyproject.toml", "Pipfile", "setup.py", "environment.yml")
+
+
+def git_state(root: Path) -> dict:
+    """Whether this repo can hold the change that is about to be made to it.
+
+    Instrumenting edits someone else's source. Without git there is no diff to review it in and
+    no way to put it back, which matters more than the branches and pull requests that come
+    later. Three separate states, because they need different answers:
+
+      - not a repo at all            -> offer `git init`
+      - a repo with no commits yet   -> `git worktree add -b` has no HEAD to branch from, and
+                                        `git diff` shows nothing, so a baseline commit is needed
+      - a repo with uncommitted work -> usable, but the instrumentation diff will arrive mixed
+                                        in with whatever was already there
+    """
+    def run(*args: str) -> tuple[int, str]:
+        try:
+            done = subprocess.run(["git", "-C", str(root), *args],
+                                  capture_output=True, text=True, timeout=10)
+            return done.returncode, done.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return 1, ""
+
+    code, _ = run("rev-parse", "--git-dir")
+    if code != 0:
+        return {"repo": False, "has_commits": False, "dirty": False,
+                "advice": "not a git repository - offer `git init` before changing any files"}
+
+    has_commits = run("rev-parse", "--verify", "HEAD")[0] == 0
+    dirty = bool(run("status", "--porcelain")[1])
+    if not has_commits:
+        advice = ("a git repository with no commits - nothing to diff against, and `git worktree "
+                  "add -b` has no HEAD to branch from. Offer a baseline commit")
+    elif dirty:
+        advice = ("uncommitted changes are already present - say so, so the instrumentation diff "
+                  "is not confused with them")
+    else:
+        advice = ""
+    return {"repo": True, "has_commits": has_commits, "dirty": dirty, "advice": advice}
 
 
 def iter_python(root: Path) -> list[Path]:
@@ -217,9 +257,12 @@ def main() -> int:
     manifests = [m for m in MANIFESTS if (root / m).is_file()]
     dotenv = any("dotenv" in f.imports for f in scanned)
 
+    git = git_state(root)
+
     report = {
         "root": str(root),
         "python_files": len(files),
+        "git": git,
         "integrations": integrations,
         "entrypoints": entrypoints[: args.limit],
         "entrypoint_count": len(entrypoints),
@@ -261,6 +304,14 @@ def main() -> int:
         print("  (* = also calls a model, so the run really does begin here)")
 
     print("\nstate:")
+    if not git["repo"]:
+        print("  git:                 NOT A REPOSITORY")
+    elif not git["has_commits"]:
+        print("  git:                 repository with no commits")
+    else:
+        print(f"  git:                 repository{', uncommitted changes present' if git['dirty'] else ', clean'}")
+    if git["advice"]:
+        print(f"                       {git['advice']}")
     print(f"  manifest:            {', '.join(manifests) or 'none found'}")
     print(f"  .env.agentx:         {'present' if report['env_file_present'] else 'absent'}")
     print(f"  python-dotenv used:  {'yes' if dotenv else 'no'}")

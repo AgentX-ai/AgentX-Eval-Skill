@@ -315,7 +315,16 @@ python3 <skill>/scripts/fetch_analysis.py <evaluation_id> \
   --write-export <repo>/eval-analysis/exports/
 ```
 
-### 2. Do the triage
+### 2. Check that git can hold the change
+
+The triage applies its fixes in a worktree on a branch, which needs a repository **and at least
+one commit**. If the repo has neither, ask with AskUserQuestion whether to `git init` and commit
+a baseline before going further - that is what makes the worktree, the diff and any later pull
+request possible. Carrying on without git is a real option; it just means the fixes land in the
+working tree with no isolation and no undo, which is worth one sentence rather than a surprise.
+`references/triage-brief.md` has the checks and the exact wording.
+
+### 3. Do the triage
 
 Read `references/triage-brief.md` and carry it out yourself, against the repo,
 with the repo as your working directory.
@@ -327,7 +336,7 @@ Start from the lowest-rated rows and read outward. The single most valuable outp
 defects found by reading the source that a judge working from answer text alone could not have
 seen. **If Table 2 is empty, Phase 1 is not finished.**
 
-### 3. Stop and show the mapping table
+### 4. Stop and show the mapping table
 
 `eval-analysis/mapping-<EVAL_ID>.md` is the deliverable of the triage and the
 checkpoint of the whole workflow. Everything up to here was free; the next step
@@ -345,7 +354,7 @@ it. Add a third option only if the triage produced a real one, such as an unreso
 `RUBRIC-CONFORMING` row to check first. The user has just read the verdict counts; that
 is the moment they can decide, and a button beats a paragraph.
 
-### 4. Re-run the evaluation
+### 5. Re-run the evaluation
 
 Read `references/eval-brief.md` and carry it out. Two things there are worth
 repeating because they are the expensive failures:

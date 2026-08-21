@@ -270,7 +270,34 @@ than two, go back to the judge evidence for the lowest-scoring questions.
 
 ## Phase 3: apply what survived
 
-### First, move into a worktree
+### First, check that git can hold the change
+
+The worktree below needs a repository **and at least one commit** - `git worktree add -b` has no
+HEAD to branch from otherwise. Check before you reach it, not when it fails:
+
+```bash
+git rev-parse --git-dir >/dev/null 2>&1 && echo repo || echo "no repo"
+git rev-parse --verify HEAD >/dev/null 2>&1 && echo "has commits" || echo "no commits"
+```
+
+If either says no, **stop and ask with AskUserQuestion**. Two options, with the consequence in
+each:
+
+- **`git init` (if needed) and commit a baseline** - the expected answer. It is what makes the
+  worktree, the branch, the before-and-after diff and any later pull request possible at all.
+- **Carry on without git** - the triage still works and the fixes still apply, but they land
+  directly in the working tree with no worktree isolation, nothing to diff against and no undo.
+  Say that in one line rather than discovering it after the edits.
+
+**Before committing a baseline, run `git status --short` and look.** A first commit made with
+`git add -A` in a directory nobody has ever gitignored is how `.env`, `.venv/`, `node_modules/`
+and a set of credentials enter someone's history, and history is the one place a mistake is not
+simply deleted. Anything of that shape goes in `.gitignore` first, and name the ones you added.
+
+If they carry on without git, skip the worktree block and apply the changes in place - but keep
+every other rule in this phase, especially the frozen surfaces.
+
+### Then, move into a worktree
 
 Do not edit the checkout you are standing in. Create a worktree and make every
 change there:

@@ -58,7 +58,32 @@ begins at, and whether anything is already traced. Then:
   the starred candidates. It is the one judgement the script cannot make, and getting it wrong
   makes every trace a fragment or a duplicate. One obvious candidate means no question.
 
-**3. Key, dependency, bootstrap.** Pick the project (see below), install `agentx-python` with
+**3. Make sure the change will be reviewable.** `detect_stack.py` reports `git` for exactly
+this. Instrumenting edits someone else's source, and without git there is no diff to read it in
+and no way to put it back - which matters more than the branches and pull requests that come
+later.
+
+| What it reports | What to do |
+|---|---|
+| `NOT A REPOSITORY` | **Ask with AskUserQuestion before writing anything.** |
+| `repository with no commits` | Same question, minus the `git init` - there is still nothing to diff against. |
+| `uncommitted changes present` | Do not ask. Say it in one line, so the instrumentation diff is not confused with work that was already there. |
+| clean repository | Nothing to do. |
+
+Two options, and put the consequence in each rather than in a warning above them:
+
+- **`git init` and commit a baseline** (the expected answer) - the instrumentation then arrives
+  as a diff someone can read, `git checkout .` undoes it, and a branch or a PR is possible later.
+- **Carry on without** - it still works, and the traces will be real. Say plainly, once, that the
+  edits will be mixed into the working tree with nothing to compare against and no undo.
+
+**Before committing a baseline, look at what would go into it.** `git status --short` first. A
+first commit made with `git add -A` in a directory nobody has ever gitignored is how `.env`,
+`.venv/`, `node_modules/` and a set of credentials enter someone's history - and history is the
+one place a mistake does not simply get deleted. Anything of that shape goes into `.gitignore`
+first, and say which ones you added.
+
+**4. Key, dependency, bootstrap.** Pick the project (see below), install `agentx-python` with
 the extra `detect_stack.py` named, add it to the repo's manifest, and copy
 `<skill>/assets/agentx_tracing.py` into the repo. Copy that file; do not rewrite it from memory.
 Then check what you actually got:
@@ -69,7 +94,7 @@ Then check what you actually got:
 
 Generate code against what that prints, not against a README.
 
-**4. Instrument.** Follow `references/instrumentation-brief.md`, phases 2 through 5, exactly.
+**5. Instrument.** Follow `references/instrumentation-brief.md`, phases 2 through 5, exactly.
 
 | Phase | What happens |
 |---|---|
@@ -84,7 +109,7 @@ Generate code against what that prints, not against a README.
 
 Phase 5 - the list of things to leave alone - is as much of the job as the phases that add code.
 
-**5. Prove it with a real trace.**
+**6. Prove it with a real trace.**
 
 ```bash
 <project-interpreter> <skill>/scripts/verify_trace.py
@@ -95,7 +120,7 @@ tool calls nested under it, `input` and `output` readable as a question and an a
 counts present. **Do not report success on the strength of the diff** - the SDK does not raise
 when it is misconfigured, so the only evidence tracing works is a trace you fetched back.
 
-**6. Say what is traced, and what is not.** The entry point that became the span, the agent's
+**7. Say what is traced, and what is not.** The entry point that became the span, the agent's
 name in the dashboard, the integration wired up and what it does not cover (streaming, in
 particular), what you deliberately left untraced, and the URL where the traces are.
 
