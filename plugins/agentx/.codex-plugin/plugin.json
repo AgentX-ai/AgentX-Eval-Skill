@@ -1,0 +1,34 @@
+{
+  "name": "agentx",
+  "version": "2.4.0",
+  "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-add-tracing instruments a Python agent; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
+  "author": {
+    "name": "AgentX",
+    "email": "marcin@agentx.so",
+    "url": "https://agentx.so"
+  },
+  "homepage": "https://github.com/AgentX-ai/AgentX-Eval-Skill",
+  "repository": "https://github.com/AgentX-ai/AgentX-Eval-Skill",
+  "keywords": [
+    "agentx",
+    "tracing",
+    "observability",
+    "evaluation",
+    "llm-judge",
+    "self-host",
+    "agent-testing"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AgentX",
+    "shortDescription": "Trace a Python agent, then fix it from its evaluation",
+    "longDescription": "Two skills that share one loop. /agentx-add-tracing wires AgentX production tracing into a Python agent that has none - it reads the project key off the engine, writes .env.agentx, initialises the SDK, and puts one span where the run begins rather than a decorator on every function. /eval-fix takes an evaluation id, triages every judge recommendation against the real source, applies what survives on a branch, and re-runs against the same dataset so the two scores mean something next to each other.",
+    "developerName": "AgentX",
+    "category": "Developer Tools",
+    "websiteURL": "https://agentx.so",
+    "defaultPrompt": [
+      "Use AgentX to add tracing to this agent.",
+      "Use AgentX to triage evaluation <id> and fix the code."
+    ]
+  }
+}

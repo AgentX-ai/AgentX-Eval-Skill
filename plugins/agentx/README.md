@@ -61,8 +61,8 @@ claude plugin install agentx@agentx
 
 **Restart Claude Code afterwards** — slash commands are loaded at startup.
 
-This repo is a Cursor marketplace as well — **Dashboard → Plugins → Team Marketplaces →
-Add Marketplace → Import from Repo**, and this plugin comes along with it.
+This repo is also a Cursor marketplace (**Dashboard → Plugins → Team Marketplaces → Import from
+Repo**) and a Codex marketplace (`codex plugin marketplace add AgentX-ai/AgentX-Eval-Skill`).
 
 Or, for any agent that reads the Agent Skills standard:
 
