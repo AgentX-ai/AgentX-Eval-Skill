@@ -11,7 +11,8 @@ evaluation ──► triage against the real source ──► mapping table ─�
 ```
 
 Built for [AgentX self-host](https://github.com/AgentX-ai/AgentX-trace-eval) —
-the local Trace/Evaluate/Monitor engine, `http://localhost:4700` by default.
+the Trace/Evaluate/Monitor engine you run yourself, `http://localhost:4700` by
+default and anywhere you like via [`HOST`](#pointing-it-at-another-engine).
 
 ## The problem it solves
 
@@ -127,13 +128,91 @@ passed through as extra instruction:
 /eval-fix oE1YMG5wqmu4j2bhTtw1X focus on the pricing question, it regressed
 ```
 
-It fetches the evaluation, reads the source, writes the mapping table, applies
+**The first thing it asks is where your engine is** — one question, once: local, or
+an address you type. Take the default and it reads `http://localhost:4700`. It is
+asked before anything is spent because that address decides which database every
+number comes from, and a run read from the wrong engine wastes the whole workflow.
+Naming a different address later switches everything after it.
+
+Then it fetches the evaluation, reads the source, writes the mapping table, applies
 what survived on a branch, and stops. Review `eval-analysis/mapping-<id>.md`,
 then approve the re-run. You get `eval-analysis/v2-report-<id>.md` with the
 before and after side by side.
 
 Without the plugin installed, the same thing in words still works — name the
 skill and the brief, and give it the id.
+
+### Pointing it at another engine
+
+You are asked, so there is nothing to look up. Three choices, two predefined:
+
+```
+Where is your AgentX engine?
+  ▸ local    http://localhost:4700     (default)
+  ▸ agentx   https://api.agentx.so
+  ▸ other    → http://10.0.0.5:4700
+```
+
+**local** is the self-host engine on this machine. **agentx** is the hosted platform —
+worth knowing that it speaks a different dialect than self-host, so see the note below.
+**other** is anything else reachable, typed in.
+
+You can also answer it before it is asked, in the same sentence as the id, and the
+question is skipped:
+
+```
+/eval-fix oE1YMG5wqmu4j2bhTtw1X our engine is at http://10.0.0.5:4700
+```
+
+Either way there is no file to edit, no variable to export and no restart. The
+address is passed to every command that needs it, each run prints which engine
+answered, and it is written into the mapping table so the re-run reproduces it.
+Naming a different address at any point switches everything after it.
+
+**Plain `http://` is fine, and internal addresses are the expected case.** An address
+with no scheme is completed from the local default's shape, so `10.0.0.5` means
+`http://10.0.0.5:4700` and `agentx.internal:4700` means `http://agentx.internal:4700`.
+A scheme you supply is left alone: `https://evals.example.com` stays on 443, as a
+reverse proxy needs, and a path prefix survives for an engine mounted under one. (The
+project key rides along in a header, so on an untrusted network you want the `https://`
+form, same as any other API.)
+
+**If the answer turns out to be wrong, you get asked again.** Anything meaning "wrong
+box" — nothing listening, no key that works, a 404 on an id you know exists — comes
+back to you with the address it tried, rather than reporting your engine as down.
+The 404 case names the other possibility too: right engine, wrong project key, since
+a run is invisible to every key but its own.
+
+Two things worth knowing once the engine is remote:
+
+- **Keys are per engine as well as per project.** A remote engine needs a key minted by
+  *that* engine — the local `~/.agentx/config.json` is the wrong file, which the script
+  verifies rather than failing later as a confusing 404. Paste yours from the engine's
+  startup output or dashboard when asked.
+- **v1 and v2 have to be scored by the same engine**, or the before-and-after is not a
+  comparison. The address is written into the mapping table alongside the dataset id for
+  exactly that reason, and the re-run is launched against it explicitly.
+
+**About `agentx`.** This skill is built against self-host's API, and the hosted platform
+is a different dialect: its evaluation ids are 24-character hex where self-host's are
+nanoids, and the analysis read here lives on self-host's dashboard router. It is
+selectable because that is where some evaluations live, and the tooling knows which kind
+of address it is on — hex ids are accepted only there, a nanoid used there is flagged
+before anything is spent, and a missing route says so rather than returning a bare 404.
+What it is not is a drop-in equivalent of a self-host engine.
+
+For a permanent default — a team where the engine is never local — the environment
+still works, and is picked up with nothing typed at all:
+
+```bash
+export AGENTX_HOST=https://evals.example.com     # or 10.0.0.5:4700, local, agentx
+export AGENTX_API_KEY=<that engine's project key>
+```
+
+First one set wins, most specific first: `--base-url` → `--host` → `$AGENTX_API_BASE_URL`
+→ `$AGENTX_HOST` → `$HOST` → `http://localhost:4700`. A bare `HOST` counts only when it
+carries a scheme, since `HOST=0.0.0.0` is what dev servers and container images set for
+their own listener and it lands in the environment of everything beside them.
 
 ### The analysis is the input, and it is a spend
 
@@ -167,7 +246,7 @@ thirty seconds:
 
 ## Requirements
 
-A running self-host engine, Python 3.9+, and git. `scripts/fetch_analysis.py`
+A running self-host engine — local, or anywhere `HOST` points — Python 3.9+, and git. `scripts/fetch_analysis.py`
 needs nothing beyond the standard library; `scripts/bootstrap.sh` builds a
 virtualenv for the repo under test when it needs one.
 
