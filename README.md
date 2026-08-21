@@ -138,48 +138,53 @@ skill and the brief, and give it the id.
 
 ### Pointing it at another engine
 
-The engine is assumed local, so nothing needs configuring until it is not. When it
-is somewhere else — a LAN box, a container, an SSH tunnel, a shared engine behind
-TLS — `HOST` is the one knob:
+The engine is assumed local, so there is nothing to configure until it is not. When it
+is somewhere else — a box on your network, a container, an engine the team shares — you
+say so in the same sentence as the id:
+
+```
+/eval-fix oE1YMG5wqmu4j2bhTtw1X our engine is at http://10.0.0.5:4700
+```
+
+That is the whole mechanism. No file to edit, no variable to export, no restart. The
+address is read out of what you typed and passed to every command that needs it, and
+each run prints which engine answered so you can see it took.
+
+**Plain `http://` is fine, and internal addresses are the expected case.** An address
+with no scheme is completed from the local default's shape, so `10.0.0.5` means
+`http://10.0.0.5:4700` and `agentx.internal:4700` means `http://agentx.internal:4700`.
+A scheme you supply is left alone: `https://evals.example.com` stays on 443, as a
+reverse proxy needs, and a path prefix survives for an engine mounted under one. (The
+project key rides along in a header, so on an untrusted network you want the `https://`
+form, same as any other API.)
+
+**If you say nothing and localhost is not it, you get asked.** Anything that means "the
+wrong box" — nothing listening, no key that works, a 404 on an id you know exists —
+stops and asks where the engine is, quoting the address it tried. Answer with the
+address; that is the whole interaction.
+
+Two things worth knowing once the engine is remote:
+
+- **Keys are per engine as well as per project.** A remote engine needs a key minted by
+  *that* engine — the local `~/.agentx/config.json` is the wrong file, which the script
+  verifies rather than failing later as a confusing 404. Paste yours from the engine's
+  startup output or dashboard when asked.
+- **v1 and v2 have to be scored by the same engine**, or the before-and-after is not a
+  comparison. The address is written into the mapping table alongside the dataset id for
+  exactly that reason, and the re-run is launched against it explicitly.
+
+For a permanent default — a team where the engine is never local — the environment
+still works, and is picked up with nothing typed at all:
 
 ```bash
-export AGENTX_HOST=https://evals.example.com     # or 192.168.1.50:4700, or my-box
+export AGENTX_HOST=https://evals.example.com     # or 10.0.0.5:4700
 export AGENTX_API_KEY=<that engine's project key>
 ```
 
-Unset means `http://localhost:4700`. A scheme-less value is completed from that
-default's shape (`192.168.1.50` → `http://192.168.1.50:4700`); a scheme you supply
-is left alone, so `https://` stays on 443 as a reverse proxy needs, and a path
-prefix survives for an engine mounted under one. For a single command there is
-`--host`, and `--base-url` still takes a full API base when it is not
-`<host>/api/v1`. First one set wins, most specific first:
-
-`--base-url` → `--host` → `$AGENTX_API_BASE_URL` → `$AGENTX_HOST` → `$HOST` →
-`http://localhost:4700`
-
-```bash
-python3 scripts/fetch_analysis.py --list --host https://evals.example.com
-```
-
-`--list` prints which engine answered, so it doubles as a check that you are
-reading the box you think you are.
-
-Two things to know once the engine is remote:
-
-- **A bare `HOST` needs a scheme.** `HOST=0.0.0.0` is what dev servers, container
-  images and Procfiles set for their *own* listener, and it lands in the
-  environment of everything started beside them. A hostname-shaped `HOST` is
-  therefore announced and ignored rather than followed into a port nothing serves;
-  `AGENTX_HOST` has no such ambiguity and is the one to reach for.
-- **Keys are per engine as well as per project.** A remote engine needs its own key
-  in `$AGENTX_API_KEY`; the local `~/.agentx/config.json` is the wrong file, which
-  the script verifies and says rather than failing later as a confusing 404.
-
-The re-run needs telling separately, because the harness under test reads
-`AGENTX_API_BASE_URL` through the AgentX SDK and knows nothing about `HOST`. The
-brief launches it as `AGENTX_API_BASE_URL="$AGENTX_HOST/api/v1" <run command>` for
-that reason: v1 and v2 have to be scored by the same engine or the comparison the
-whole workflow exists for is void.
+First one set wins, most specific first: `--base-url` → `--host` → `$AGENTX_API_BASE_URL`
+→ `$AGENTX_HOST` → `$HOST` → `http://localhost:4700`. A bare `HOST` counts only when it
+carries a scheme, since `HOST=0.0.0.0` is what dev servers and container images set for
+their own listener and it lands in the environment of everything beside them.
 
 ### The analysis is the input, and it is a spend
 

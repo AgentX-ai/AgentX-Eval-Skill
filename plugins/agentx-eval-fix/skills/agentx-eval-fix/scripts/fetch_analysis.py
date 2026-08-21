@@ -263,6 +263,18 @@ def _request(
                 f"only visible to the key of the project that owns it. List them with:\n"
                 f"  curl -s {base_url}/projects"
             ) from exc
+        if exc.code == 404 and path.startswith("/evaluate/") and not path.startswith("/evaluate/list"):
+            # Two causes, and they used to be one. An evaluation lives in one project
+            # on one engine, so a 404 means the wrong key or the wrong box - and now
+            # that the box is configurable, naming only the key sends people hunting
+            # through projects on an engine that never had the run.
+            raise EngineError(
+                f"404 from {path} on {base_url}.\n"
+                f"An evaluation belongs to one project on one engine, so either the key "
+                f"selects a different project or this is a different engine than the one "
+                f"that ran it. `--list` shows what this key can see here; `--host "
+                f"<address>` points at another engine.\n{detail}"
+            ) from exc
         if exc.code == 404:
             raise EngineError(f"404 from {path}: {detail}") from exc
         raise EngineError(f"HTTP {exc.code} from {path}: {detail}") from exc
@@ -756,11 +768,12 @@ def main() -> int:
         base_url, base_url_source = resolve_base_url(args.base_url, args.host)
         api_key, key_source = resolve_api_key(args.api_key, base_url)
 
+        # Which engine answered is the one thing that is invisible in every other line of
+        # output and expensive in every direction when wrong, so it is stated every time
+        # rather than only when something fails. It costs one line on stderr.
+        print(f"engine: {base_url} (from {base_url_source}), key from {key_source}", file=sys.stderr)
+
         if args.list:
-            # The listing is also the connection test, so name the engine it came from:
-            # "no evaluations" and "no evaluations *here*" are different problems, and
-            # the second one is the one a HOST typo produces.
-            print(f"engine: {base_url} (from {base_url_source}), key from {key_source}", file=sys.stderr)
             rows = list_evaluations(base_url, api_key, 20)
             if not rows:
                 print(f"no evaluations under the key from {key_source}.", file=sys.stderr)

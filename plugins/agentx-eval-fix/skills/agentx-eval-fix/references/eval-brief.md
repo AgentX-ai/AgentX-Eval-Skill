@@ -50,9 +50,11 @@ Ordered by how expensive they are to miss.
 ### 1. The base URL has to point at the engine that scored v1
 
 ```bash
-ENGINE="${AGENTX_HOST:-http://localhost:4700}"
-echo "base url: ${AGENTX_API_BASE_URL:-<unset>}   engine: $ENGINE"
-curl -s -o /dev/null -w '%{http_code}\n' "$ENGINE/health"
+# Substitute the literal address from the export's Identifiers table. Each command
+# below runs in a fresh shell, so this cannot be exported once and reused - carry
+# the address itself, not a variable holding it.
+echo "base url: ${AGENTX_API_BASE_URL:-<unset>}"
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4700/health
 ```
 
 **Unset is wrong here.** The AgentX SDK defaults to the hosted platform, so an
@@ -60,12 +62,18 @@ unset base URL sends the whole run to production: a different database, a
 different dataset id space, a different bill, and a v2 number that cannot be
 compared to a v1 scored on the self-host engine.
 
-**The right value is the Base URL row of the export's Identifiers table**, not
-localhost by reflex. The engine is local by default, but `HOST` can point it at a
-LAN box, a container or a shared engine behind TLS, and v1 was scored wherever that
-said at the time. Same engine as v1 or the two numbers are not a pair — a v2 run
-against a different engine is a different database, a dataset id that resolves to
-something else or to nothing, and no error either way.
+**The right value is the Base URL row of the export's Identifiers table**, or the
+engine line at the top of the mapping table — not localhost by reflex. The engine is
+local by default, but it can be a LAN box, a container or a shared engine behind TLS,
+and v1 was scored wherever that was. Same engine as v1 or the two numbers are not a
+pair: a v2 run against a different engine is a different database, a dataset id that
+resolves to something else or to nothing, and no error either way.
+
+**If nothing answers and the export names an address you cannot reach, ask the user
+where the engine is now** — with AskUserQuestion, quoting the address you tried.
+Whatever they answer is a literal you paste into the commands below; they should not
+have to edit a file or export anything to tell you. A plain `http://` on an internal
+network is a normal answer, not one to correct.
 
 `/health` returning `200` is the engine answering. Anything else and it is not
 running, or `HOST` names an address that is not it — `agentx-server --dev`, or the
@@ -114,8 +122,8 @@ What to do depends on where you are, and getting this backwards is destructive:
   this touches no history.
 - **On someone's own machine**, `.env` is their real configuration and holds their
   keys. **Do not delete it.** Override it for the one command instead:
-  `AGENTX_API_BASE_URL="${AGENTX_HOST:-http://localhost:4700}/api/v1" ...`.
-  Deleting it destroys credentials you cannot restore.
+  `AGENTX_API_BASE_URL=<engine>/api/v1 ...`. Deleting it destroys credentials you
+  cannot restore.
 
 If you cannot tell which situation you are in, you are on someone's machine.
 Treat the file as theirs.
@@ -135,9 +143,10 @@ Self-host splits them, and each is missed in its own way:
 - **The AgentX API key** (`AGENTX_API_KEY`) selects the project. An evaluation
   belongs to one project and is invisible under any other project's key. If a
   lookup 404s on an id you know exists, this is why:
-  `curl -s "${AGENTX_HOST:-http://localhost:4700}/api/v1/projects"` lists them.
-  Keys are per engine as well as per project, so an engine reached over `HOST`
-  needs *that* engine's key, not the one in the local `~/.agentx/config.json`.
+  `curl -s <engine>/api/v1/projects` lists them. Keys are per engine as well as per
+  project, so a remote engine needs *that* engine's key, not the one in the local
+  `~/.agentx/config.json`. If it is missing, ask the user for it rather than
+  improvising: it is one paste from their engine's startup output or dashboard.
 
 Report and stop if any is missing, rather than improvising a fallback.
 
@@ -193,17 +202,18 @@ started" is easy to change by accident between two runs.
 
 ```bash
 mkdir -p .eval-logs
-AGENTX_API_BASE_URL="${AGENTX_HOST:-http://localhost:4700}/api/v1" \
+AGENTX_API_BASE_URL=http://localhost:4700/api/v1 \
 nohup <the repo's run command> > .eval-logs/eval-v2.log 2>&1 &
 echo "launched pid $!"
 ```
 
-**Pass the base URL explicitly, even when it is the default.** The harness reads
-`AGENTX_API_BASE_URL` through the SDK and knows nothing about `HOST`, so an engine
-you reached with `AGENTX_HOST` is an engine the harness will miss — it would send
-v2 to the hosted platform, or to whatever a stale `.env` still names, and score
-cleanly against the wrong database. Deriving one from the other on the launch line
-keeps the two halves of this workflow pointed at the same engine.
+**Put the address on this line as a literal, even when it is the default**, and make
+it the address guardrail 1 settled on. Two things make this the step where a remote
+engine gets lost: the harness reads `AGENTX_API_BASE_URL` through the SDK and knows
+nothing about how you reached the engine, and every command here runs in a fresh
+shell, so anything exported earlier is already gone. Miss it and v2 goes to the
+hosted platform or to whatever a stale `.env` names — scoring cleanly against the
+wrong database, with nothing to show for it but a number that cannot be compared.
 
 For a Python harness that command is usually `.venv/bin/python -u <script>`, and
 **the `-u` is not optional**: without unbuffered output the log stays empty until
@@ -300,7 +310,7 @@ python3 <skill>/scripts/fetch_analysis.py <v2_run_id> --analyze \
 Or directly, if you would rather see the raw call:
 
 ```bash
-curl -s -X POST "${AGENTX_HOST:-http://localhost:4700}/api/v1/evaluate/analyze/<v2_run_id>" \
+curl -s -X POST "<engine>/api/v1/evaluate/analyze/<v2_run_id>" \
   -H "x-api-key: $AGENTX_API_KEY" -H "Content-Type: application/json" \
   -d '{"qualityMode":"balanced"}'
 ```
@@ -358,7 +368,7 @@ to think something regressed to nothing.
 ### Where to read the scores from
 
 ```bash
-curl -s "${AGENTX_HOST:-http://localhost:4700}/api/v1/evaluate/<run_id>" -H "x-api-key: $AGENTX_API_KEY"
+curl -s "<engine>/api/v1/evaluate/<run_id>" -H "x-api-key: $AGENTX_API_KEY"
 # .liveStatistics -> averageRating, minRating, maxRating, ratedCount
 # .results[]      -> per-question rating, justification, similarity, codeScorerResults
 ```

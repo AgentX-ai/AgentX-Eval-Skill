@@ -127,6 +127,13 @@ one that failed. Write `--include='*.py'`. The same applies to `*` in any
 Write `eval-analysis/mapping-<EVAL_ID>.md`. A human reads this to decide whether
 to authorize an expensive re-run, so write it for that reader.
 
+Open it with the two facts the re-run has to reproduce exactly: the **dataset id**
+and the **engine address**, both off the export's Identifiers table. The engine is
+`http://localhost:4700` for most people and somewhere else for anyone running it on
+another box, and by the time v2 launches nothing else will remember which — the
+address may have arrived in a sentence the user typed once, and a shell variable does
+not survive from one command to the next. Two lines here is the whole fix.
+
 ### Table 1: every numbered recommendation in the export
 
 One row per numbered recommendation, none skipped, in order. Columns:
@@ -659,6 +666,7 @@ Fill it in exactly:
 TRIAGE COMPLETE
 status:         complete | partial (<what is missing and why>)
 eval_id:        <EVAL_ID>
+engine:         <the base URL the export names, e.g. http://localhost:4700/api/v1>
 mapping_file:   eval-analysis/mapping-<EVAL_ID>.md
 branch:         eval-fix/<EVAL_ID>
 worktree:       .worktrees/eval-fix-<EVAL_ID> | none (edited in place, <reason>)
