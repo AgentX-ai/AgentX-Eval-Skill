@@ -41,6 +41,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -261,13 +262,18 @@ def resolve_api_key(explicit: str | None, base_url: str,
 
 
 def mask(key: str) -> str:
-    """A key reduced to something recognisable but useless.
+    """A key reduced to a fingerprint that contains none of it.
 
-    The kept prefix is `agtx_local_` plus one character - constant across every key this
-    engine mints - so what actually survives is five characters out of a 48-character secret.
-    Enough to tell two keys apart in a transcript, not enough to be one.
+    This used to print a slice - first twelve characters and last four - which was readable
+    but still leaked four real characters and confirmed the prefix. A truncated SHA-256
+    carries no key material at all while doing the one job the printed form has: telling two
+    keys apart in a listing, so the reader can see that the Dev project's key is not the
+    Default project's. Matching it against the engine's own output was never needed, because
+    every key here is verified against the engine before it is used.
     """
-    return f"{key[:12]}…{key[-4:]}" if len(key) > 20 else "…"
+    if not key:
+        return "(none)"
+    return f"key#{hashlib.sha256(key.encode('utf-8')).hexdigest()[:8]}"
 
 
 def assert_no_secret(payload: object, secret: str) -> None:
@@ -425,12 +431,10 @@ def main() -> int:
                 f"Create it from the dashboard instead, then copy its key.")
         project = create_project(base_url, args.create_project)
         key = project.get("apiKey", "")
-        # mask() keeps the constant prefix and four characters; the analyzer cannot see
-        # through it, so the taint reported here is the key before masking, not after.
         print(f"created project {project.get('name')!r} ({project.get('_id')}), "
-              f"key {mask(key)}", file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
+              f"{mask(key)}", file=sys.stderr)
         out.update(project_id=project.get("_id"), project_name=project.get("name"),
-                   key_source="POST /projects", key_masked=mask(key))
+                   key_source="POST /projects", key_fingerprint=mask(key))
         if args.write_env:
             path = Path(args.write_env)
             verb = write_env(path, key, base_url, force=True)
@@ -455,8 +459,8 @@ def main() -> int:
     if not key:
         print(f"no usable API key for {engine_root(base_url)}:", file=sys.stderr)
         for line in tried:
-            # `tried` holds where a key came from ("$AGENTX_API_KEY", a path), never a key.
-            print(f"  - {line}", file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
+            # `tried` holds where a key came from ("$AGENTX_API_KEY", a path), never a value.
+            print(f"  - {line}", file=sys.stderr)
         print("\nA key comes from the engine you are pointing at, and only from there:", file=sys.stderr)
         if engine["kind"] == "hosted":
             print("  - app.agentx.so, under your workspace settings", file=sys.stderr)
@@ -467,9 +471,8 @@ def main() -> int:
         print("\nThen pass it as --api-key, or export AGENTX_API_KEY.", file=sys.stderr)
         return 3
 
-    print(f"key: {mask(key)} (from {source}), verified against this engine",
-          file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
-    out.update(key_source=source, key_masked=mask(key))
+    print(f"{mask(key)} from {source}, verified against this engine", file=sys.stderr)
+    out.update(key_source=source, key_fingerprint=mask(key))
 
     projects = list_projects(base_url, key) if engine["can_list_projects"] else []
     if projects:
@@ -479,7 +482,7 @@ def main() -> int:
         # question from, and it should not need a second invocation to get it.
         out["projects"] = [{"id": p.get("_id"), "name": p.get("name"),
                             "isDefault": bool(p.get("isDefault")),
-                            "keyMasked": mask(p.get("apiKey", ""))}
+                            "keyFingerprint": mask(p.get("apiKey", ""))}
                            for p in ordered_all[: max(1, args.limit)]]
     if args.list_projects:
         # Capped, default first. An engine that has been used for a while accumulates projects
@@ -493,7 +496,7 @@ def main() -> int:
         for p in shown:
             flag = " (default)" if p.get("isDefault") else ""
             print(f"  {p.get('_id')}  {p.get('name')}{flag}  {mask(p.get('apiKey', ''))}",
-                  file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
+                  file=sys.stderr)
         if len(ordered) > len(shown):
             print(f"  ... and {len(ordered) - len(shown)} more (--limit to show them, "
                   f"--project <id> to select one by id)", file=sys.stderr)
@@ -526,9 +529,9 @@ def main() -> int:
                 print(f"added {path.name} to {changed}", file=sys.stderr)
 
     if args.json:
-        # `out` carries key_masked / keyMasked and never a whole key. Enforced, not asserted.
+        # `out` carries fingerprints and labels, never a whole key. Enforced, not asserted.
         assert_no_secret(out, key)
-        print(json.dumps(out, indent=2))  # codeql[py/clear-text-logging-sensitive-data]
+        print(json.dumps(out, indent=2))
     return 0
 
 

@@ -59,7 +59,7 @@ ask about. Read three fields off the JSON:
 |---|---|
 | `engine_kind` / `auth_mode` | `self-host` + `disabled` is the common case and the only one where projects can be enumerated |
 | `can_list_projects` | `true` → ask the user. `false` → say why (`reason`) in one line and move on |
-| `projects[]` | the options: `name`, `isDefault`, `keyMasked` |
+| `projects[]` | the options: `name`, `isDefault`, `keyFingerprint` |
 
 **When `can_list_projects` is true, ask with AskUserQuestion. Do not take the default
 silently.** The key *is* the project selector - a trace is visible to its own project's key and
@@ -88,7 +88,8 @@ which is what makes a cold start work with no environment variable and nothing t
 last in that order deliberately: it is always the *default* project, which is right for a fresh
 install and wrong for anyone who has already chosen where their data goes.
 
-Never print a key. The script masks every key it displays and writes the chosen one straight to
+Never print a key. The script prints a `key#<8 hex>` fingerprint instead - a truncated SHA-256
+that tells two keys apart and contains none of either - and writes the chosen one straight to
 disk, so the secret never enters the transcript. If you find yourself about to `cat
 .env.agentx`, don't - `agentx_key.py` will tell you what you want to know without it.
 
