@@ -58,30 +58,35 @@ begins at, and whether anything is already traced. Then:
   the starred candidates. It is the one judgement the script cannot make, and getting it wrong
   makes every trace a fragment or a duplicate. One obvious candidate means no question.
 
-**3. Make sure the change will be reviewable.** `detect_stack.py` reports `git` for exactly
-this. Instrumenting edits someone else's source, and without git there is no diff to read it in
-and no way to put it back - which matters more than the branches and pull requests that come
-later.
+**3. Offer git, then carry on either way.** `detect_stack.py` reports `git` for this.
+**No git is not a blocker and never changes what gets instrumented** - the traces are just as
+real either way. It is worth one question only because tracing edits someone else's source, and
+a repo gives them a diff to read it in and a way to put it back.
 
 | What it reports | What to do |
 |---|---|
-| `NOT A REPOSITORY` | **Ask with AskUserQuestion before writing anything.** |
-| `repository with no commits` | Same question, minus the `git init` - there is still nothing to diff against. |
-| `uncommitted changes present` | Do not ask. Say it in one line, so the instrumentation diff is not confused with work that was already there. |
+| `NOT A REPOSITORY` | Offer `git init` in one AskUserQuestion, then proceed on whichever answer. |
+| `repository with no commits` | Same offer, minus the `git init` - there is still nothing to diff against. |
+| `uncommitted changes present` | Do not ask. Say it in one line, so the instrumentation diff is not confused with work already there. |
 | clean repository | Nothing to do. |
 
-Two options, and put the consequence in each rather than in a warning above them:
+Two options, both legitimate, with the consequence written into each:
 
-- **`git init` and commit a baseline** (the expected answer) - the instrumentation then arrives
-  as a diff someone can read, `git checkout .` undoes it, and a branch or a PR is possible later.
-- **Carry on without** - it still works, and the traces will be real. Say plainly, once, that the
-  edits will be mixed into the working tree with nothing to compare against and no undo.
+- **`git init` and commit a baseline** - the instrumentation then arrives as a diff someone can
+  read, `git checkout .` undoes it, and a branch or a PR is possible later.
+- **Carry on without** - say once, in one sentence, that the edits will land in the working tree
+  with nothing to compare against and no undo. Then do the whole job anyway.
 
-**Before committing a baseline, look at what would go into it.** `git status --short` first. A
-first commit made with `git add -A` in a directory nobody has ever gitignored is how `.env`,
-`.venv/`, `node_modules/` and a set of credentials enter someone's history - and history is the
-one place a mistake does not simply get deleted. Anything of that shape goes into `.gitignore`
-first, and say which ones you added.
+**Ask once and move on.** If the answer is no, ambiguous, or slow in coming, instrument the repo.
+A user who declined git wanted tracing, not a conversation about version control, and stopping to
+insist is worse than the missing diff. `.env.agentx` is written with its `.gitignore` entry
+regardless, so a later `git init` does not expose the key.
+
+**If they do commit a baseline, look at what goes into it first.** `git status --short`. A first
+commit made with `git add -A` in a directory nobody has ever gitignored is how `.env`, `.venv/`,
+`node_modules/` and a set of credentials enter someone's history - and history is the one place a
+mistake does not simply get deleted. Anything of that shape goes into `.gitignore` first, and say
+which ones you added.
 
 **4. Key, dependency, bootstrap.** Pick the project (see below), install `agentx-python` with
 the extra `detect_stack.py` named, add it to the repo's manifest, and copy

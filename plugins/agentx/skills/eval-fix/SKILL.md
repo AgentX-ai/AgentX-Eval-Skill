@@ -318,11 +318,11 @@ python3 <skill>/scripts/fetch_analysis.py <evaluation_id> \
 ### 2. Check that git can hold the change
 
 The triage applies its fixes in a worktree on a branch, which needs a repository **and at least
-one commit**. If the repo has neither, ask with AskUserQuestion whether to `git init` and commit
-a baseline before going further - that is what makes the worktree, the diff and any later pull
-request possible. Carrying on without git is a real option; it just means the fixes land in the
-working tree with no isolation and no undo, which is worth one sentence rather than a surprise.
-`references/triage-brief.md` has the checks and the exact wording.
+one commit**. If the repo has neither, offer `git init` plus a baseline commit in one question -
+and then carry on whichever way they answer. **No git is not a blocker.** The triage is worth the
+same without it; the fixes land in the working tree instead of a worktree, with no isolation and
+no undo, which is worth one sentence and nothing more. `references/triage-brief.md` has the
+checks and the exact wording.
 
 ### 3. Do the triage
 
