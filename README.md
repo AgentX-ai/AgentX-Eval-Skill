@@ -274,13 +274,23 @@ Without one a run still reports that it finished, and every result is stored wit
 rating 0 and the reason in its justification — check the ratings, not the exit
 code.
 
-Project API keys are **copy-pasted, not fetched**: the engine deliberately
-removed its old unauthenticated `/dev/bootstrap` handout. `fetch_analysis.py`
-reads `$AGENTX_API_KEY`, then `~/.agentx/config.json` — which it verifies against
-the engine before using, because that file records whichever engine last ran on
-the machine and not necessarily the one you are talking to. When no key works it
-says so, and says where to get one, instead of failing later as a 404 that looks
-like a bad evaluation id.
+Project API keys resolve in order of how specific the intent behind them is:
+`--api-key`, then `$AGENTX_API_KEY`, then `~/.agentx/config.json` — verified
+against the engine before use, because that file records whichever engine last
+ran on the machine and not necessarily the one you are talking to — and finally
+the engine's own handout.
+
+That handout is `GET /api/v1/auth/config`: unauthenticated, present in both auth
+modes, and under the default `AGENTX_AUTH=disabled` it returns the default
+project's key outright, so a cold start needs nothing exported and nothing
+pasted. Under `AGENTX_AUTH=enabled` it returns no key, and the hosted platform
+has no such route — there the key comes from the engine's startup output or the
+dashboard. It is tried last on purpose: it is always the **default** project.
+(`GET /dev/bootstrap` was its predecessor and was removed, with a test asserting
+it 404s.)
+
+When no key works, the script says so and says where to get one for *that*
+engine, instead of failing later as a 404 that looks like a bad evaluation id.
 
 ## What's in here
 

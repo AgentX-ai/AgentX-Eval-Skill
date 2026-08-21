@@ -83,7 +83,7 @@ back to `http://localhost:4700`, and the key from `$AGENTX_API_KEY`, then from
 prints the engine it reached on the first line, so the listing doubles as proof of
 *which* engine answered. If it prints evaluations, you are connected.
 
-Three things about this that cost a run each when assumed wrong:
+Four things about this that cost a run each when assumed wrong:
 
 - **Keys are per project, and so is the data.** The key *is* the project
   selector; an evaluation belongs to exactly one project and is a 404 under
@@ -94,9 +94,18 @@ Three things about this that cost a run each when assumed wrong:
   in its own volume and mints its own keys, so the file and the port disagree the
   moment anyone runs the container. `fetch_analysis.py` now verifies that key with a
   real read before using it and says so plainly when it fails, rather than letting it
-  surface as a 401 against the evaluation id. **`GET /dev/bootstrap` no longer exists** —
-  the engine removed the unauthenticated handout on purpose, with a test asserting it
-  404s, so keys are copy-pasted from the engine's startup output or the dashboard.
+  surface as a 401 against the evaluation id.
+- **The engine hands out a key on one row of the matrix, and only one.**
+  `GET /api/v1/auth/config` is unauthenticated and exists in both auth modes — it is how
+  the dashboard chooses between login, owner setup and no-auth — and under the default
+  `AGENTX_AUTH=disabled` it returns the default project's key outright. So a cold start
+  needs no exported variable and nothing pasted. Under `AGENTX_AUTH=enabled` no key is
+  ever returned, and the hosted platform serves no such route, where the key has to come
+  from the engine's startup output or the dashboard. (`GET /dev/bootstrap`, its
+  predecessor, was removed with a test asserting it 404s; this route replaced it.)
+  `fetch_analysis.py` tries it **last** — it is always the *default* project, which is
+  right for a fresh install and wrong for anyone who has already chosen where their
+  evaluations live.
 - **Ids are nanoids**, e.g. `oE1YMG5wqmu4j2bhTtw1X`, not the 24-character hex ids
   the hosted platform uses. There is no filename to read one out of, so `--list`
   is how you find one.
