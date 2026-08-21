@@ -21,17 +21,33 @@ the wrong engine wastes the entire workflow — including the paid re-run at the
 button press up front is cheaper than any of the ways that goes wrong. It is also the
 only moment the user is not yet holding results they want to act on.
 
-Shape it so the common case is a single keypress:
+Three choices, so it is a menu and not a prompt:
 
-- **`http://localhost:4700` — local**, first and marked as the default. It is right for
-  most people and it is exactly what the script assumes with no flag at all.
-- **Whatever the environment already names**, when `$AGENTX_HOST` or
-  `$AGENTX_API_BASE_URL` is set — read them *before* asking, quote the value literally,
-  and offer it as its own option. Someone who configured it once should not retype it.
-- **Another address**, which the user types: `http://10.0.0.5:4700`,
-  `agentx.internal:4700`, `https://evals.example.com`. A scheme-less address is
-  completed as `http://` on port 4700, and **plain `http://` on an internal network is
-  a normal answer, not a mistake to correct**.
+| Option | Address | Pass as |
+|---|---|---|
+| **local** (default) | `http://localhost:4700` | `--host local` |
+| **agentx** | `https://api.agentx.so` | `--host agentx` |
+| **other** | whatever they type | `--host <what they typed>` |
+
+Put **local** first and mark it the default: it is right for most people and is what the
+script assumes with no flag at all. **other** is AskUserQuestion's free-text answer, and
+the address can be anything reachable — `http://10.0.0.5:4700`, `agentx.internal:4700`,
+`https://evals.example.com`. A scheme-less address is completed as `http://` on port
+4700, and **plain `http://` on an internal network is a normal answer, not a mistake to
+correct**.
+
+Add a fourth option only when `$AGENTX_HOST` or `$AGENTX_API_BASE_URL` names something
+that is neither of the two — read them *before* asking, quote the value literally, and
+offer it. Someone who configured it once should not retype it.
+
+**About the agentx option.** This skill is written against self-host's API, and the two
+are different dialects: the analysis it reads lives on self-host's dashboard router, and
+hosted evaluation ids are 24-character hex where self-host's are nanoids. The script
+knows which kind of address it is on — it accepts hex ids only against `agentx`, warns
+on the reverse, and answers a missing route there with "this is the hosted platform,
+which serves a different router" rather than a bare 404. So offer it when that is where
+the user's evaluation lives; just never as equivalent to self-host, and if a read fails
+there with a routing message, say that plainly rather than retrying variations.
 
 Ask it exactly once. Skip it only when the user already named an address in the same
 breath as the id — `/eval-fix <id> our engine is at http://10.0.0.5:4700` — because an

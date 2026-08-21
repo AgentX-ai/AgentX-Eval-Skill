@@ -144,14 +144,18 @@ skill and the brief, and give it the id.
 
 ### Pointing it at another engine
 
-You are asked, so there is nothing to look up. The opening question offers local,
-anything your environment already names, and an address you type:
+You are asked, so there is nothing to look up. Three choices, two predefined:
 
 ```
 Where is your AgentX engine?
-  ▸ http://localhost:4700 — local (default)
-  ▸ Other → http://10.0.0.5:4700
+  ▸ local    http://localhost:4700     (default)
+  ▸ agentx   https://api.agentx.so
+  ▸ other    → http://10.0.0.5:4700
 ```
+
+**local** is the self-host engine on this machine. **agentx** is the hosted platform —
+worth knowing that it speaks a different dialect than self-host, so see the note below.
+**other** is anything else reachable, typed in.
 
 You can also answer it before it is asked, in the same sentence as the id, and the
 question is skipped:
@@ -189,11 +193,19 @@ Two things worth knowing once the engine is remote:
   comparison. The address is written into the mapping table alongside the dataset id for
   exactly that reason, and the re-run is launched against it explicitly.
 
+**About `agentx`.** This skill is built against self-host's API, and the hosted platform
+is a different dialect: its evaluation ids are 24-character hex where self-host's are
+nanoids, and the analysis read here lives on self-host's dashboard router. It is
+selectable because that is where some evaluations live, and the tooling knows which kind
+of address it is on — hex ids are accepted only there, a nanoid used there is flagged
+before anything is spent, and a missing route says so rather than returning a bare 404.
+What it is not is a drop-in equivalent of a self-host engine.
+
 For a permanent default — a team where the engine is never local — the environment
 still works, and is picked up with nothing typed at all:
 
 ```bash
-export AGENTX_HOST=https://evals.example.com     # or 10.0.0.5:4700
+export AGENTX_HOST=https://evals.example.com     # or 10.0.0.5:4700, local, agentx
 export AGENTX_API_KEY=<that engine's project key>
 ```
 

@@ -105,8 +105,26 @@ Three things about this that cost a run each when assumed wrong:
 
 `http://localhost:4700` is right for most people, but it is not right for anyone whose
 engine runs on another box, and which engine a number came from is invisible until
-something fails. So **open with one AskUserQuestion**: local, whatever `$AGENTX_HOST` or
-`$AGENTX_API_BASE_URL` already names if either is set, or an address the user types.
+something fails. So **open with one AskUserQuestion** — three choices, two of them
+predefined and answering to a word:
+
+| Option | Address | Pass as |
+|---|---|---|
+| **local** (default) | `http://localhost:4700` | `--host local` |
+| **agentx** | `https://api.agentx.so` | `--host agentx` |
+| **other** | whatever the user types | `--host <address>` |
+
+Add a fourth only when `$AGENTX_HOST` or `$AGENTX_API_BASE_URL` names something that is
+neither predefined one — read them before asking and quote the value, since someone who
+configured it once should not retype it.
+
+**`agentx` is a different dialect, not a second self-host engine.** Its evaluation ids
+are 24-character hex where self-host's are nanoids, and the analysis this skill reads
+lives on self-host's dashboard router. The script tracks which kind of address it is
+on: hex ids are accepted only against `agentx`, a nanoid used there is flagged, and a
+missing route answers "this is the hosted platform, which serves a different router"
+rather than a bare 404. Offer it when that is where the evaluation lives — just never
+as equivalent to self-host.
 
 Ask it once, at the start, before spending anything, and hold the answer for the whole
 workflow. The alternative is finding out at the 404 — or worse, not finding out, and

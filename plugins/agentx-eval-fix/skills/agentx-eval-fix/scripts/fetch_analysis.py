@@ -6,12 +6,15 @@ Pull an evaluation and its AI Analysis out of an AgentX self-host engine.
     python3 fetch_analysis.py <evaluation_id>
     python3 fetch_analysis.py <evaluation_id> --write-export eval-analysis/exports/
     python3 fetch_analysis.py <evaluation_id> --analyze          # spends judge calls
+    python3 fetch_analysis.py --list --host agentx                      # hosted
     python3 fetch_analysis.py --list --host https://evals.example.com   # elsewhere
 
-The engine is local unless you say otherwise. `HOST` is the one knob for that:
-unset it means `http://localhost:4700`, set it can be any address you can reach -
-a LAN box, a container, a tunnel, a shared engine behind TLS. Most specific wins:
-`--base-url`, then `--host`, then `$AGENTX_API_BASE_URL`, `$AGENTX_HOST`, `$HOST`.
+The engine is local unless you say otherwise. `HOST` is the one knob for that, and
+two engines answer to a name: `local` (http://localhost:4700, the default) and
+`agentx` (https://api.agentx.so, the hosted platform - a different API dialect, see
+HOSTED_HOSTNAMES). Anything else is an address: a LAN box, a container, a tunnel, a
+shared engine behind TLS. Most specific wins: `--base-url`, then `--host`, then
+`$AGENTX_API_BASE_URL`, `$AGENTX_HOST`, `$HOST`.
 
 Talks HTTP to the engine directly and needs nothing but the standard library: no
 `agentx-python`, no `python-dotenv`, no virtualenv. That is deliberate. This runs
@@ -57,9 +60,32 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-DEFAULT_HOST = "http://localhost:4700"
+# The two engines worth having names for. Everything else is typed in full, but these
+# two are what people are actually choosing between, so they answer to a word - and the
+# choice is offered as exactly local / agentx / anything-you-type.
+KNOWN_HOSTS = {
+    "local": "http://localhost:4700",
+    "agentx": "https://api.agentx.so",
+}
+
+# Words people reach for meaning the same two. Not advertised, just not a dead end:
+# without them `--host cloud` would be read as a hostname and fail as an unreachable box.
+_HOST_SYNONYMS = {
+    "cloud": "agentx",
+    "hosted": "agentx",
+    "platform": "agentx",
+    "localhost": "local",
+}
+DEFAULT_HOST = KNOWN_HOSTS["local"]
 DEFAULT_PORT = 4700
 DEFAULT_BASE_URL = f"{DEFAULT_HOST}/api/v1"
+
+# api.agentx.so is the hosted platform, whose API is a different dialect from the
+# self-host engine this script reads: the analysis lives on another router and ids are
+# hex rather than nanoids. Pointing here is allowed - it is a real address people have -
+# but the checks below say so plainly instead of letting the difference surface as a
+# mystery 404 several calls in.
+HOSTED_HOSTNAMES = {"api.agentx.so"}
 
 # nanoid's default alphabet and length. Nothing enforces 21 characters at the API,
 # so the bound is loose; the point is only to reject an id that was pasted out of
@@ -92,6 +118,10 @@ def normalize_host(value: str) -> str:
     turn a working address into a hang.
     """
     host = value.strip().rstrip("/")
+    # A name stands in for the address, so `--host agentx` and the literal
+    # https://api.agentx.so are the same request.
+    name = host.lower()
+    host = KNOWN_HOSTS.get(_HOST_SYNONYMS.get(name, name), host)
     if "://" not in host:
         parts = urlsplit(f"http://{host}")
         # Read the port off the text rather than parts.port, which raises on a
@@ -121,7 +151,10 @@ def resolve_host(explicit: str | None) -> tuple[str, str]:
     # point this at a port nothing is serving and report it as the engine being down.
     bare = (os.getenv("HOST") or "").strip()
     if bare:
-        if "://" in bare:
+        # A scheme, or one of the names - `HOST=agentx` is unambiguous in a way that
+        # `HOST=0.0.0.0` is not, so it does not need the scheme to be believed.
+        known = bare.lower() in KNOWN_HOSTS or bare.lower() in _HOST_SYNONYMS
+        if "://" in bare or known:
             return normalize_host(bare), "$HOST"
         print(
             f"note: ignoring HOST={bare!r} - no scheme, so it is more likely some other\n"
@@ -168,6 +201,11 @@ def resolve_base_url(explicit: str | None, host: str | None = None) -> tuple[str
         # host-sourced values get this: a base url naming a path meant that path.
         base = f"{base}/api/v1"
     return base, source
+
+
+def is_hosted(base_url: str) -> bool:
+    """Whether this address is the hosted platform rather than a self-host engine."""
+    return (urlsplit(base_url).hostname or "").lower() in HOSTED_HOSTNAMES
 
 
 def _key_works(base_url: str, key: str) -> bool:
@@ -268,6 +306,15 @@ def _request(
             # on one engine, so a 404 means the wrong key or the wrong box - and now
             # that the box is configurable, naming only the key sends people hunting
             # through projects on an engine that never had the run.
+            if is_hosted(base_url):
+                raise EngineError(
+                    f"404 from {path} on {base_url}, which is the hosted platform.\n"
+                    f"This script reads self-host's dashboard router, and the hosted API "
+                    f"serves the evaluation under a different one - so a 404 here is as "
+                    f"likely to mean the route does not exist as that the id is wrong. If "
+                    f"the evaluation you want is on a self-host engine, point --host at "
+                    f"it.\n{detail}"
+                ) from exc
             raise EngineError(
                 f"404 from {path} on {base_url}.\n"
                 f"An evaluation belongs to one project on one engine, so either the key "
@@ -279,6 +326,14 @@ def _request(
             raise EngineError(f"404 from {path}: {detail}") from exc
         raise EngineError(f"HTTP {exc.code} from {path}: {detail}") from exc
     except urllib.error.URLError as exc:
+        # Telling someone to run `agentx-server --dev` when they are pointed at a URL on
+        # the internet is advice for a different problem, so the remedy follows the kind
+        # of address rather than being one sentence for both.
+        if is_hosted(base_url) or urlsplit(base_url).scheme == "https":
+            raise EngineError(
+                f"cannot reach {base_url} ({exc.reason}). Check the address is right and that this machine can reach it - a VPN, a firewall or a proxy between you and it will "
+                f"look exactly like this. `--host local` reads a self-host engine on this machine."
+            ) from exc
         raise EngineError(
             f"cannot reach the engine at {base_url} ({exc.reason}). Start it with "
             f"`agentx-server --dev`, or point --host (or $AGENTX_HOST) at wherever it "
@@ -753,7 +808,7 @@ def main() -> int:
     # One address, two ways to write it, so taking both at once could only mean the user
     # believes one of them is doing something it is not.
     where = ap.add_mutually_exclusive_group()
-    where.add_argument("--host", help=f"engine address, e.g. https://evals.example.com (default: $AGENTX_HOST, $HOST, or {DEFAULT_HOST})")
+    where.add_argument("--host", help=f"engine address, or one of {', '.join(f'{k} ({v})' for k, v in KNOWN_HOSTS.items())} (default: $AGENTX_HOST, $HOST, or local)")
     where.add_argument("--base-url", help=f"engine API base, when it is not <host>/api/v1 (default: $AGENTX_API_BASE_URL)")
     ap.add_argument("--api-key", help="project API key (default: $AGENTX_API_KEY, then a verified ~/.agentx/config.json)")
     ap.add_argument("--write-export", type=Path, metavar="DIR", help="render a markdown export into DIR for the triage to read")
@@ -791,13 +846,25 @@ def main() -> int:
             ap.error("an evaluation_id is required (or --list to find one)")
 
         evaluation_id = args.evaluation_id
-        if _HOSTED_ID.fullmatch(evaluation_id):
+        # The id's shape says which platform it came from, so it is only wrong relative to
+        # where you are pointed. A hex id is correct against the hosted address and a
+        # guaranteed 404 against a self-host engine, which is worth stopping for; the
+        # reverse is worth a word rather than a refusal.
+        if _HOSTED_ID.fullmatch(evaluation_id) and not is_hosted(base_url):
             print(
-                f"{evaluation_id!r} is a 24-character hex id, which is a hosted AgentX id. "
-                f"This skill targets self-host, whose ids are nanoids. Find yours with --list.",
+                f"{evaluation_id!r} is a 24-character hex id, which is a hosted AgentX id, "
+                f"but {base_url} is a self-host engine, whose ids are nanoids. Find the "
+                f"self-host id with --list, or point --host at the hosted platform.",
                 file=sys.stderr,
             )
             return 2
+        if is_hosted(base_url) and not _HOSTED_ID.fullmatch(evaluation_id):
+            print(
+                f"note: {base_url} is the hosted platform, whose ids are 24-character hex, "
+                f"and {evaluation_id!r} is not one. Continuing, but expect a 404 if this id "
+                f"came from a self-host engine.",
+                file=sys.stderr,
+            )
         if not _ID.fullmatch(evaluation_id):
             print(f"{evaluation_id!r} is not a valid evaluation id.", file=sys.stderr)
             return 2
