@@ -1,3 +1,33 @@
+# AgentX skills for coding agents
+
+Two plugins for working with [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval) —
+the Trace/Evaluate/Monitor engine you run yourself, `http://localhost:4700` by default.
+One gets your agent's real runs into it; the other turns what it measures into a code fix.
+
+| Plugin | Command | What it does |
+|---|---|---|
+| [**agentx-tracing**](plugins/agentx-tracing) | `/agentx-add-tracing` | Wires tracing into a Python agent that has none: key, SDK, and one span where the run begins |
+| **agentx-eval-fix** | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
+
+They compose in that order, and the seam between them is the reason to have both: an
+evaluation result carrying a `traceId` is judged against the agent's **real execution path**,
+where one without it is judged on answer text alone — which is how a judge concludes an agent
+has no retrieval when it plainly does.
+
+```bash
+claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
+claude plugin install agentx-tracing@agentx     # start here if nothing is traced yet
+claude plugin install agentx-eval-fix@agentx
+```
+
+Restart Claude Code afterwards — slash commands are loaded at startup. This repo is a
+[Cursor marketplace](#cursor) too, and both plugins come along with it.
+
+Everything below is about **agentx-eval-fix**; `agentx-tracing` has
+[its own README](plugins/agentx-tracing).
+
+---
+
 # agentx-eval-fix
 
 A Claude Code skill that turns an AgentX evaluation into a triaged code fix, then
