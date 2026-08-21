@@ -1,0 +1,19 @@
+{
+  "name": "agentx-tracing",
+  "displayName": "AgentX Tracing",
+  "version": "1.0.0",
+  "description": "Wire AgentX production tracing into an existing Python agent: fetch the project key from the engine, write .env.agentx, initialise the SDK, and instrument the calls worth tracing.",
+  "author": {
+    "name": "AgentX",
+    "email": "marcin@agentx.so"
+  },
+  "keywords": [
+    "agentx",
+    "tracing",
+    "observability",
+    "self-host",
+    "instrumentation",
+    "python"
+  ],
+  "logo": "assets/logo.svg"
+}

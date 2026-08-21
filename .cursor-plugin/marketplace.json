@@ -5,7 +5,7 @@
     "email": "marcin@agentx.so"
   },
   "metadata": {
-    "description": "AgentX plugins for Cursor — evaluation triage and agent governance against a self-hosted AgentX engine",
+    "description": "AgentX plugins for Cursor — production tracing for your own agent, and evaluation triage against a self-hosted AgentX engine",
     "version": "1.0.0"
   },
   "plugins": [
@@ -13,6 +13,11 @@
       "name": "agentx-eval-fix",
       "source": "./plugins/agentx-eval-fix",
       "description": "Turn an AgentX self-host evaluation into a triaged code fix and a re-run against the same dataset, so the before and after scores mean something next to each other."
+    },
+    {
+      "name": "agentx-tracing",
+      "source": "./plugins/agentx-tracing",
+      "description": "Wire AgentX production tracing into an existing Python agent: fetch the project key from the engine, write .env.agentx, initialise the SDK, and instrument the calls worth tracing."
     }
   ]
 }
