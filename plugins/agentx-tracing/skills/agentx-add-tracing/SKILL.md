@@ -147,10 +147,10 @@ on is worse than no question.
   anyone who has already chosen where their data goes - which is exactly why it is last in the
   resolution order, and why the question above exists.
 
-**Never print a key.** The scripts print a `key#<8 hex>` fingerprint - a truncated SHA-256,
-which tells two keys apart and contains none of either - and write the selected one straight to
-disk, so the secret goes from the engine to `.env.agentx` without passing through the
-conversation. `assert_no_secret()` enforces that at runtime rather than trusting the review. `.env.agentx` is written at mode 0600 and added to `.gitignore`.
+**Nothing prints anything derived from a key** - not a masked form, not a hash. Every line
+that might have wanted one already carries the project id, which identifies the project better
+and is not a secret. The key goes from the engine to `.env.agentx` without passing through the
+conversation, and `assert_no_secret()` enforces that at runtime rather than trusting the review. `.env.agentx` is written at mode 0600 and added to `.gitignore`.
 
 ---
 

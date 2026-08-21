@@ -41,7 +41,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -261,19 +260,15 @@ def resolve_api_key(explicit: str | None, base_url: str,
     return None, "", tried
 
 
-def mask(key: str) -> str:
-    """A key reduced to a fingerprint that contains none of it.
-
-    This used to print a slice - first twelve characters and last four - which was readable
-    but still leaked four real characters and confirmed the prefix. A truncated SHA-256
-    carries no key material at all while doing the one job the printed form has: telling two
-    keys apart in a listing, so the reader can see that the Dev project's key is not the
-    Default project's. Matching it against the engine's own output was never needed, because
-    every key here is verified against the engine before it is used.
-    """
-    if not key:
-        return "(none)"
-    return f"key#{hashlib.sha256(key.encode('utf-8')).hexdigest()[:8]}"
+# Nothing here prints anything derived from a key, not even a masked or hashed form.
+#
+# Two earlier attempts got this wrong in the same way. A slice ("agtx_local_1…f394") still
+# leaked four real characters and confirmed the prefix; a truncated SHA-256 leaked nothing but
+# was a hash of a credential, which is its own thing to have to explain. Both existed to answer
+# "which key is this?" - and every line that asked already carried the project id, which answers
+# "which project is this?" better and is not a secret at all.
+#
+# So the key appears in exactly one place: the file the SDK reads it back from.
 
 
 def assert_no_secret(payload: object, secret: str) -> None:
@@ -289,7 +284,8 @@ def assert_no_secret(payload: object, secret: str) -> None:
     if secret in json.dumps(payload):
         raise SystemExit(
             "internal error: refusing to print a payload containing the API key in full. "
-            "Whatever field was just added should carry mask(key), not key."
+            "Whatever field was just added should carry the project id or the source "
+            "label, not the key itself."
         )
 
 
@@ -431,10 +427,9 @@ def main() -> int:
                 f"Create it from the dashboard instead, then copy its key.")
         project = create_project(base_url, args.create_project)
         key = project.get("apiKey", "")
-        print(f"created project {project.get('name')!r} ({project.get('_id')}), "
-              f"{mask(key)}", file=sys.stderr)
+        print(f"created project {project.get('name')!r} ({project.get('_id')})", file=sys.stderr)
         out.update(project_id=project.get("_id"), project_name=project.get("name"),
-                   key_source="POST /projects", key_fingerprint=mask(key))
+                   key_source="POST /projects")
         if args.write_env:
             path = Path(args.write_env)
             verb = write_env(path, key, base_url, force=True)
@@ -471,8 +466,8 @@ def main() -> int:
         print("\nThen pass it as --api-key, or export AGENTX_API_KEY.", file=sys.stderr)
         return 3
 
-    print(f"{mask(key)} from {source}, verified against this engine", file=sys.stderr)
-    out.update(key_source=source, key_fingerprint=mask(key))
+    print(f"key from {source}, verified against this engine", file=sys.stderr)
+    out.update(key_source=source)
 
     projects = list_projects(base_url, key) if engine["can_list_projects"] else []
     if projects:
@@ -481,8 +476,7 @@ def main() -> int:
         # Always in the JSON, capped: this is what the caller builds the "which project?"
         # question from, and it should not need a second invocation to get it.
         out["projects"] = [{"id": p.get("_id"), "name": p.get("name"),
-                            "isDefault": bool(p.get("isDefault")),
-                            "keyFingerprint": mask(p.get("apiKey", ""))}
+                            "isDefault": bool(p.get("isDefault"))}
                            for p in ordered_all[: max(1, args.limit)]]
     if args.list_projects:
         # Capped, default first. An engine that has been used for a while accumulates projects
@@ -495,8 +489,7 @@ def main() -> int:
         shown = ordered[: max(1, args.limit)]
         for p in shown:
             flag = " (default)" if p.get("isDefault") else ""
-            print(f"  {p.get('_id')}  {p.get('name')}{flag}  {mask(p.get('apiKey', ''))}",
-                  file=sys.stderr)
+            print(f"  {p.get('_id')}  {p.get('name')}{flag}", file=sys.stderr)
         if len(ordered) > len(shown):
             print(f"  ... and {len(ordered) - len(shown)} more (--limit to show them, "
                   f"--project <id> to select one by id)", file=sys.stderr)
@@ -529,7 +522,7 @@ def main() -> int:
                 print(f"added {path.name} to {changed}", file=sys.stderr)
 
     if args.json:
-        # `out` carries fingerprints and labels, never a whole key. Enforced, not asserted.
+        # `out` carries ids and source labels, never a key. Enforced, not asserted.
         assert_no_secret(out, key)
         print(json.dumps(out, indent=2))
     return 0

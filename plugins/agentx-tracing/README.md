@@ -118,10 +118,11 @@ own handout — each **verified against the engine you named** before use, becau
 records whichever engine last ran on the machine and not necessarily the one you are talking to.
 The handout is last on purpose: it is always the *default* project.
 
-No key is ever printed. The scripts show a `key#<8 hex>` fingerprint — a truncated SHA-256 that
-tells two keys apart and contains none of either — and write the selected one straight to disk at
-mode 0600, gitignored. A runtime guard refuses to emit any payload containing a whole key, so the
-property holds through future edits rather than resting on a review.
+No key is ever printed — not masked, not hashed. Every line that might have wanted a key
+fingerprint already carries the project id, which identifies the project better and is not a
+secret. The selected key goes straight to disk at mode 0600, gitignored, and a runtime guard
+refuses to emit any payload containing a whole key, so the property holds through future edits
+rather than resting on a review.
 
 ## What's in here
 
