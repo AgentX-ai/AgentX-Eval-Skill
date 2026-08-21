@@ -101,12 +101,18 @@ Three things about this that cost a run each when assumed wrong:
   the hosted platform uses. There is no filename to read one out of, so `--list`
   is how you find one.
 
-### The engine does not have to be local
+### Ask which engine, once, before the first read
 
-It is `http://localhost:4700` unless someone says otherwise, which is right for most
-people and needs no configuration at all. When it is somewhere else — a LAN box, a
-container, a shared engine the team runs — that is a thing the user tells you, in
-words, and you turn into a flag:
+`http://localhost:4700` is right for most people, but it is not right for anyone whose
+engine runs on another box, and which engine a number came from is invisible until
+something fails. So **open with one AskUserQuestion**: local, whatever `$AGENTX_HOST` or
+`$AGENTX_API_BASE_URL` already names if either is set, or an address the user types.
+
+Ask it once, at the start, before spending anything, and hold the answer for the whole
+workflow. The alternative is finding out at the 404 — or worse, not finding out, and
+triaging a run the user cannot see from an engine they are not using. Skip the question
+only when they already named an address alongside the id, since an answer just given is
+not a question:
 
 ```
 Use the agentx-eval-fix skill on evaluation p6sLDw9CPv0XF0eiUA_zF.
@@ -116,6 +122,11 @@ Our engine is at http://10.0.0.5:4700.
 ```bash
 python3 <skill>/scripts/fetch_analysis.py p6sLDw9CPv0XF0eiUA_zF --host http://10.0.0.5:4700
 ```
+
+**The answer is not a lock.** Say once that a different address can be named at any
+time; if one is, every later command switches to it — and if the switch comes after the
+export was written, re-fetch from the new engine before triaging, because an export from
+one engine and a re-run against another is precisely the comparison this guards.
 
 **Plain `http://` is fine**, and on an internal network it is the normal answer. A
 scheme-less address is completed from the local default's shape, so `10.0.0.5` means

@@ -128,7 +128,13 @@ passed through as extra instruction:
 /eval-fix oE1YMG5wqmu4j2bhTtw1X focus on the pricing question, it regressed
 ```
 
-It fetches the evaluation, reads the source, writes the mapping table, applies
+**The first thing it asks is where your engine is** — one question, once: local, or
+an address you type. Take the default and it reads `http://localhost:4700`. It is
+asked before anything is spent because that address decides which database every
+number comes from, and a run read from the wrong engine wastes the whole workflow.
+Naming a different address later switches everything after it.
+
+Then it fetches the evaluation, reads the source, writes the mapping table, applies
 what survived on a branch, and stops. Review `eval-analysis/mapping-<id>.md`,
 then approve the re-run. You get `eval-analysis/v2-report-<id>.md` with the
 before and after side by side.
@@ -138,17 +144,26 @@ skill and the brief, and give it the id.
 
 ### Pointing it at another engine
 
-The engine is assumed local, so there is nothing to configure until it is not. When it
-is somewhere else — a box on your network, a container, an engine the team shares — you
-say so in the same sentence as the id:
+You are asked, so there is nothing to look up. The opening question offers local,
+anything your environment already names, and an address you type:
+
+```
+Where is your AgentX engine?
+  ▸ http://localhost:4700 — local (default)
+  ▸ Other → http://10.0.0.5:4700
+```
+
+You can also answer it before it is asked, in the same sentence as the id, and the
+question is skipped:
 
 ```
 /eval-fix oE1YMG5wqmu4j2bhTtw1X our engine is at http://10.0.0.5:4700
 ```
 
-That is the whole mechanism. No file to edit, no variable to export, no restart. The
-address is read out of what you typed and passed to every command that needs it, and
-each run prints which engine answered so you can see it took.
+Either way there is no file to edit, no variable to export and no restart. The
+address is passed to every command that needs it, each run prints which engine
+answered, and it is written into the mapping table so the re-run reproduces it.
+Naming a different address at any point switches everything after it.
 
 **Plain `http://` is fine, and internal addresses are the expected case.** An address
 with no scheme is completed from the local default's shape, so `10.0.0.5` means
@@ -158,10 +173,11 @@ reverse proxy needs, and a path prefix survives for an engine mounted under one.
 project key rides along in a header, so on an untrusted network you want the `https://`
 form, same as any other API.)
 
-**If you say nothing and localhost is not it, you get asked.** Anything that means "the
-wrong box" — nothing listening, no key that works, a 404 on an id you know exists —
-stops and asks where the engine is, quoting the address it tried. Answer with the
-address; that is the whole interaction.
+**If the answer turns out to be wrong, you get asked again.** Anything meaning "wrong
+box" — nothing listening, no key that works, a 404 on an id you know exists — comes
+back to you with the address it tried, rather than reporting your engine as down.
+The 404 case names the other possibility too: right engine, wrong project key, since
+a run is invisible to every key but its own.
 
 Two things worth knowing once the engine is remote:
 

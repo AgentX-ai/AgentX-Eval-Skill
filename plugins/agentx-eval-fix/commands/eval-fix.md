@@ -10,62 +10,64 @@ Additional instructions from the user (may be empty): $ARGUMENTS
 
 Carry this out yourself, in order. Do not delegate it to a subagent.
 
-## 1. Pull the evaluation
+## 1. Ask where the engine is, once
+
+**Before anything else, ask with AskUserQuestion which engine to read from.** One
+question, at the start, and then not again: the answer holds for the whole workflow.
+
+It goes first because the address decides which database every number in this run comes
+from, it is invisible in the output until something fails, and an evaluation read from
+the wrong engine wastes the entire workflow — including the paid re-run at the end. One
+button press up front is cheaper than any of the ways that goes wrong. It is also the
+only moment the user is not yet holding results they want to act on.
+
+Shape it so the common case is a single keypress:
+
+- **`http://localhost:4700` — local**, first and marked as the default. It is right for
+  most people and it is exactly what the script assumes with no flag at all.
+- **Whatever the environment already names**, when `$AGENTX_HOST` or
+  `$AGENTX_API_BASE_URL` is set — read them *before* asking, quote the value literally,
+  and offer it as its own option. Someone who configured it once should not retype it.
+- **Another address**, which the user types: `http://10.0.0.5:4700`,
+  `agentx.internal:4700`, `https://evals.example.com`. A scheme-less address is
+  completed as `http://` on port 4700, and **plain `http://` on an internal network is
+  a normal answer, not a mistake to correct**.
+
+Ask it exactly once. Skip it only when the user already named an address in the same
+breath as the id — `/eval-fix <id> our engine is at http://10.0.0.5:4700` — because an
+answer they just gave is an answer, not a question to repeat. Confirm which engine you
+are using and move on.
+
+**Say it can be changed at any time**, in one clause, when you first report the numbers:
+naming a different address later switches every subsequent command to it. If they do
+switch after the fetch, re-fetch from the new engine before triaging anything — an
+export from one engine and a re-run against another is the exact failure this question
+exists to prevent.
+
+Then pass the answer as `--host <address>` on every call to the script, and record it in
+the mapping table beside the dataset id. **Each Bash call is a fresh shell**, so there
+is no exporting it once: the address goes on each command that needs it, including the
+harness launch line in step 5 as `AGENTX_API_BASE_URL=<address>/api/v1`.
+
+## 2. Pull the evaluation
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/scripts/fetch_analysis.py $1 \
-  --write-export eval-analysis/exports/
+  --host <the address from step 1> --write-export eval-analysis/exports/
 ```
 
-The script resolves the engine URL and the project key on its own and verifies the key
-before using it. It prints the engine it reached on its first line of stderr — **say
-which engine the numbers came from** when you report them, in the same breath as the
-scores. If it reports no usable key, relay its message — it names where to get one —
-and stop rather than guessing.
+The script verifies the project key before using it and prints the engine it reached on
+its first line of stderr — **say which engine the numbers came from** when you report
+them, in the same breath as the scores. If it reports no usable key, relay its message;
+it names where to get one.
 
-### Where the engine is, and how the user tells you
-
-The engine is `http://localhost:4700` unless someone says otherwise, and that is right
-for most people, so **do not open with a question about it.** The first request is a
-better test than any question: it either works, and prints which engine answered, or it
-fails in a way that says exactly what is wrong. Asking first spends the user's attention
-on the one case where you could have just looked.
-
-There are three ways an address reaches you, and none of them requires the user to touch
-a shell:
-
-1. **They typed it with the command.** `$ARGUMENTS` carries everything after the id, so
-   `/eval-fix <id> our engine is at http://10.0.0.5:4700` has already told you. Read an
-   address out of it and pass `--host <address>`; do not make them repeat it.
-2. **You asked, because the first call failed.** See below.
-3. **The environment already says so.** `$AGENTX_API_BASE_URL` or `$AGENTX_HOST` set
-   before this session started are picked up with no flag at all.
-
-**If the first call fails, ask — do not declare the engine down.** Three failures mean
-"you may be talking to the wrong box", and the script names each: `cannot reach the
-engine at ...`, `no usable API key for ...`, and a `404` on an id the user believes in.
-On any of them, **ask with AskUserQuestion** rather than guessing or stopping:
-
-- Quote the address it actually tried, so the question is answerable — a user who reads
-  `http://localhost:4700` immediately knows whether that is their engine.
-- Offer the real options: it is local but not started yet (they run `agentx-server
-  --dev`, you retry unchanged), or it is somewhere else and they give the address. The
-  free-text answer is the address — `http://10.0.0.5:4700`, `https://evals.example.com`,
-  `agentx.internal:4700` all work, and a plain `http://` on an internal network is
-  normal, not a mistake to correct.
-- A 404 on the id has a second cause worth naming in the question: the right engine but
-  the wrong project key, since a run is invisible to every key but its own.
-
-**Then carry that address through every later command in the session.** Each Bash call
-starts a fresh shell, so an `export` in one is gone by the next — an address that only
-ever lived in one `export` line will silently revert to localhost for the rest of the
-workflow, and the re-run in step 4 would score against a different engine than the
-triage read. Put it on the command that needs it: `--host <address>` for this script,
-`AGENTX_API_BASE_URL="<address>/api/v1"` on the harness launch line. Write the address
-into the mapping table with the dataset id, so v2 can be pointed at the same place.
-
-Show the user the baseline numbers (average, **minimum**, variance, rated count) and how
-many recommendations came back, before going further.
+**If it fails, the address is the first suspect, not the last.** Three failures mean
+"possibly the wrong box", and each names the address it tried: `cannot reach the engine
+at ...`, `no usable API key for ...`, and a `404` on an id the user believes exists. Ask
+again with AskUserQuestion rather than declaring the engine down — quote the address, and
+offer both real causes: it is somewhere else, or it is the right engine and the key
+selects a different project, since a run is invisible to every key but its own. Keys are
+per engine as well as per project, so a remote engine needs one minted by that engine.
 
 ### If the evaluation has no analysis, offer to run one
 
@@ -94,7 +96,7 @@ for it to finish before going on.
 **If the evaluation already has an analysis, do not ask.** It costs nothing to
 read what is already there.
 
-## 2. Triage
+## 3. Triage
 
 Follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/references/triage-brief.md` exactly
 and in order, against this repo.
@@ -103,7 +105,7 @@ Start from the lowest-rated rows and read outward. The single most valuable outp
 Table 2 — defects found by reading the source that a judge working from answer text alone
 could not have seen. If Table 2 is empty, Phase 1 is not finished.
 
-## 3. Stop at the mapping table
+## 4. Stop at the mapping table
 
 Write `eval-analysis/mapping-$1.md`, apply what survived on a branch in a worktree, and
 **stop**. Everything to this point is free; the re-run is not. Summarise for the user:
@@ -134,17 +136,17 @@ Add a third option only when the triage actually produced one — for example an
 `RUBRIC-CONFORMING` row, where "check that figure first, then re-run" is a genuinely
 different choice and not a hedge.
 
-Then act on the answer. On "re-run now", go straight to step 4 without asking again. On
+Then act on the answer. On "re-run now", go straight to step 5 without asking again. On
 "not yet", stop cleanly: the branch is committed and the report is on disk, so say where
 both are and finish.
 
-## 4. Re-run only when asked
+## 5. Re-run only when asked
 
 On approval, follow `${CLAUDE_PLUGIN_ROOT}/skills/agentx-eval-fix/references/eval-brief.md`.
 
 Do not open a pull request before this point. Until the re-run exists there is no
 before-and-after to put in it, which is the only thing that makes it worth
-reviewing. Push the branch in step 3, and offer the PR once the comparison is in
+reviewing. Push the branch in step 4, and offer the PR once the comparison is in
 hand - asking first, and saying plainly if the numbers went the wrong way.
 Re-run against the **same dataset id** and keep every frozen surface frozen: questions,
 all three criteria strings, judge prompt and model, similarity metrics, code scorers, tool
