@@ -43,8 +43,18 @@ written by whichever engine last ran on this machine, which is not necessarily
 the engine on the port you are talking to — a Docker instance keeps its database
 in its own volume and mints its own keys. So every candidate key is verified with a
 real authenticated read before it is used, and a key that does not work is reported
-as a key problem rather than surfacing as a 401 several steps later. The engine's old
-`GET /dev/bootstrap` handout was removed deliberately - keys are copy-pasted now.
+as a key problem rather than surfacing as a 401 several steps later.
+
+**The engine will hand you a key, on one row of the matrix.** `GET /api/v1/auth/config`
+is unauthenticated and exists in both auth modes — it is how the dashboard decides
+between login, owner setup, and no-auth at all. Under the default
+`AGENTX_AUTH=disabled` it also returns the default project's key outright, which is
+what lets a fresh install land on a working screen with nothing to paste. Under
+`AGENTX_AUTH=enabled` no key is ever returned, and the hosted platform serves no such
+route. Its predecessor `GET /dev/bootstrap` was removed, with a test asserting it 404s;
+this route replaced it rather than dropping the idea. It is the *last* candidate below,
+because it is always the **default** project — right for a fresh install, wrong for
+anyone who has already chosen where their evaluations live.
 """
 
 from __future__ import annotations
@@ -221,12 +231,18 @@ def _key_works(base_url: str, key: str) -> bool:
 def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str, str]:
     """Returns (key, where it came from).
 
-    Every candidate is *verified* against the engine before being returned. The engine
-    removed the unauthenticated `GET /dev/bootstrap` handout ("keys are copy-pasted, not
-    fetched" - engine/src/index.ts, with a test asserting it 404s), so the old order
-    (bootstrap, then config.json) silently fell through to whichever key a previous engine
-    happened to leave on disk and surfaced as a 401 several steps later, pointing at the
-    evaluation id rather than at the key. Guessing wrong is worse than not guessing.
+    Every fetched candidate is *verified* against the engine before being returned, and the
+    order runs from most specific intent to least: something the user typed, then something
+    their shell remembers, then a file recording whichever engine last ran here, then the
+    engine's own default. The old order put the engine's handout first, which meant a machine
+    that had ever run a different engine silently used that engine's key and surfaced a 401
+    several steps later, pointing at the evaluation id rather than at the key.
+
+    Guessing wrong is worse than not guessing - but not guessing at all was its own cost.
+    `GET /auth/config` is unauthenticated and returns the default project's key under the
+    default `AGENTX_AUTH=disabled`, so a cold start on a fresh engine needs no exported
+    variable and nothing pasted. It is last precisely because it is always the *default*
+    project.
     """
     if explicit:
         return explicit, "--api-key"
@@ -253,21 +269,51 @@ def resolve_api_key(explicit: str | None, base_url: str) -> tuple[str, str]:
                 f"whichever engine last ran on this machine, not this one"
             )
 
-    # Legacy engines only. Kept because it costs one request and still works against an
-    # older self-host build, but it is no longer the documented path.
+    # The engine's own handout. Unauthenticated, and present in both auth modes - but it
+    # carries a key only under AGENTX_AUTH=disabled, and the hosted platform has no such
+    # route at all, so an absent key here is information rather than a failure.
+    auth_mode = None
     try:
-        payload = _request(base_url, None, "/dev/bootstrap")
-        if isinstance(payload, dict) and payload.get("apiKey"):
-            return payload["apiKey"], "GET /dev/bootstrap (legacy engine)"
+        payload = _request(base_url, None, "/auth/config")
+        if isinstance(payload, dict):
+            auth_mode = payload.get("mode")
+            key = payload.get("apiKey")
+            if key and _key_works(base_url, key):
+                return key, "GET /auth/config (this engine's default project)"
+            if key:
+                tried.append("GET /auth/config returned a key this engine then rejected")
+            elif auth_mode == "enabled":
+                tried.append(
+                    "this engine runs with AGENTX_AUTH=enabled, which hands out no key - "
+                    "sign in to the dashboard and copy the project's key"
+                )
     except EngineError:
-        tried.append("GET /dev/bootstrap is not served by this engine (removed deliberately)")
+        tried.append("GET /auth/config is not served here (not a self-host engine, or too old)")
+
+    # Legacy engines only. Kept because it costs one request and still works against an
+    # older self-host build that predates /auth/config.
+    if auth_mode is None:
+        try:
+            payload = _request(base_url, None, "/dev/bootstrap")
+            if isinstance(payload, dict) and payload.get("apiKey"):
+                return payload["apiKey"], "GET /dev/bootstrap (legacy engine)"
+        except EngineError:
+            tried.append("GET /dev/bootstrap is not served by this engine either (removed "
+                         "deliberately; /auth/config replaced it)")
 
     detail = "".join(f"\n  - {t}" for t in tried)
+    # Where to look differs by engine, and sending someone to a startup log that does not
+    # exist for their deployment is the kind of "help" that costs ten minutes.
+    where = (
+        "  - app.agentx.so, under your workspace settings\n"
+        if is_hosted(base_url)
+        else "  - the engine's startup output: 'Default project API key: agtx_local_...'\n"
+             "  - or the dashboard's project settings\n"
+    )
     raise EngineError(
         f"no usable API key for {base_url}.{detail}\n"
-        f"Keys are per project and are copy-pasted, not fetched. Get the current one from:\n"
-        f"  - the engine's startup output: 'Default project API key: agtx_local_...'\n"
-        f"  - or the dashboard's project settings\n"
+        f"Keys are per project. This engine did not hand one out, so get it from:\n"
+        f"{where}"
         f"then export AGENTX_API_KEY=<key> (or pass --api-key)."
     )
 
