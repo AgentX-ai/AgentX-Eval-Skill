@@ -368,9 +368,14 @@ def write_env(path: Path, key: str, base_url: str, force: bool) -> str:
 
 
 def ensure_gitignored(repo: Path, filename: str) -> str | None:
-    """A key file that is not ignored is one `git add .` from being published."""
-    if not (repo / ".git").exists():
-        return None
+    """A key file that is not ignored is one `git add .` from being published.
+
+    Written whether or not this is a repository yet. It used to return early without one, on the
+    reasoning that a non-repo cannot leak through git - true today, and wrong the moment someone
+    runs `git init`, which is a thing the tracing skill itself now offers to do. A one-line
+    .gitignore in a directory that never becomes a repo costs nothing; a credential in the first
+    commit of one that does is not something you can take back.
+    """
     gitignore = repo / ".gitignore"
     body = gitignore.read_text() if gitignore.is_file() else ""
     if any(line.strip().lstrip("/") == filename for line in body.splitlines()):

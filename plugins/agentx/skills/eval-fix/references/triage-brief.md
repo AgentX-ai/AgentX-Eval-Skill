@@ -280,22 +280,27 @@ git rev-parse --git-dir >/dev/null 2>&1 && echo repo || echo "no repo"
 git rev-parse --verify HEAD >/dev/null 2>&1 && echo "has commits" || echo "no commits"
 ```
 
-If either says no, **stop and ask with AskUserQuestion**. Two options, with the consequence in
-each:
+If either says no, **offer git in one AskUserQuestion and then carry on regardless**. This is an
+offer, not a gate: the triage is worth exactly as much without git, and every verdict, every row
+of both tables and every fix still applies. Two options, both legitimate:
 
-- **`git init` (if needed) and commit a baseline** - the expected answer. It is what makes the
-  worktree, the branch, the before-and-after diff and any later pull request possible at all.
-- **Carry on without git** - the triage still works and the fixes still apply, but they land
-  directly in the working tree with no worktree isolation, nothing to diff against and no undo.
-  Say that in one line rather than discovering it after the edits.
+- **`git init` (if needed) and commit a baseline** - makes the worktree, the branch, the
+  before-and-after diff and any later pull request possible.
+- **Carry on without git** - the fixes land directly in the working tree, with no worktree
+  isolation, nothing to diff against and no undo. Say that in one sentence, then proceed.
+
+**Ask once.** On no, on silence, or on anything ambiguous, do the triage. Someone who declined
+git asked for their agent fixed, not for a conversation about version control.
 
 **Before committing a baseline, run `git status --short` and look.** A first commit made with
 `git add -A` in a directory nobody has ever gitignored is how `.env`, `.venv/`, `node_modules/`
 and a set of credentials enter someone's history, and history is the one place a mistake is not
 simply deleted. Anything of that shape goes in `.gitignore` first, and name the ones you added.
 
-If they carry on without git, skip the worktree block and apply the changes in place - but keep
-every other rule in this phase, especially the frozen surfaces.
+Without git, skip the worktree block below and apply the changes in place. Everything else in
+this phase is unchanged and still binding - especially the frozen surfaces, which is what the
+re-run's comparison depends on. The only thing lost is the isolation, and it is worth saying
+once that `eval-analysis/mapping-<EVAL_ID>.md` is then the only record of what was changed.
 
 ### Then, move into a worktree
 
