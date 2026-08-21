@@ -1,17 +1,18 @@
 {
   "name": "agentx-eval-fix",
+  "displayName": "AgentX Eval Fix",
   "version": "1.1.0",
   "description": "Turn an AgentX self-host evaluation into a triaged code fix and a re-run against the same dataset, so the before and after scores mean something next to each other.",
   "author": {
     "name": "AgentX",
     "email": "marcin@agentx.so"
   },
-  "homepage": "https://github.com/AgentX-ai/AgentX-Eval-Skill",
   "keywords": [
     "agentx",
     "evaluation",
     "self-host",
     "llm-judge",
     "agent-testing"
-  ]
+  ],
+  "logo": "assets/logo.svg"
 }

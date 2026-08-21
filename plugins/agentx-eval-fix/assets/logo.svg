@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">AgentX</title>
+  <desc id="desc">The AgentX mark: a white A on a dark rounded square.</desc>
+  <rect width="128" height="128" rx="20" fill="#171717" />
+  <path
+    transform="translate(28.2 28) scale(0.72)"
+    d="M39.9941 1.24924C40.2999 0.494141 41.0331 0 41.8478 0H58.1522C58.9669 0 59.7001 0.49414 60.0059 1.24924L99.443 98.6246C99.7092 99.282 99.2254 100 98.5161 100H81.6786C81.2689 100 80.9007 99.7501 80.7494 99.3693L50.9146 24.3012C50.5824 23.4653 49.4015 23.4588 49.0601 24.291L18.2545 99.3796C18.1006 99.7549 17.7351 100 17.3294 100H1.4839C0.774598 100 0.290772 99.2821 0.557032 98.6246L39.9941 1.24924Z"
+    fill="#ffffff"
+  />
+</svg>
