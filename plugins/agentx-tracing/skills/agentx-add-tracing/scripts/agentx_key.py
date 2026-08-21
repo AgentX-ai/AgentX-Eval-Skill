@@ -45,6 +45,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -101,8 +102,14 @@ def is_hosted(base_url: str) -> bool:
 # HTTP
 # ---------------------------------------------------------------------------
 def request(base_url: str, path: str, key: str | None = None, method: str = "GET",
-            body: dict | None = None) -> tuple[int, object]:
-    """One request. Returns (status, parsed-or-text); never raises on an HTTP error status."""
+            body: dict | None = None, _retries: int = 1) -> tuple[int, object]:
+    """One request. Returns (status, parsed-or-text); never raises on an HTTP error status.
+
+    The credential routes this script uses (`/auth/config`, `/projects`) sit behind the
+    engine's stricter rate limiter, and running the skill twice in quick succession is enough
+    to trip it. A 429 is a healthy engine saying "slow down", so it gets one backed-off retry
+    rather than being handed to the caller as a failure.
+    """
     payload = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(f"{base_url}{path}", data=payload, method=method)
     if key:
@@ -117,6 +124,9 @@ def request(base_url: str, path: str, key: str | None = None, method: str = "GET
             except json.JSONDecodeError:
                 return resp.status, text
     except urllib.error.HTTPError as exc:
+        if exc.code == 429 and _retries > 0:
+            time.sleep(2.0)
+            return request(base_url, path, key, method, body, _retries - 1)
         text = exc.read().decode("utf-8", "replace")
         try:
             return exc.code, json.loads(text)
@@ -174,6 +184,12 @@ def describe_engine(base_url: str) -> dict:
         status, payload = request(base_url, "/auth/config")
     except ConnectionError:
         raise
+
+    if status == 429:
+        info.update(kind="rate-limited", can_list_projects=False,
+                    reason="the engine rate-limited this check - it is up, just asked to slow "
+                           "down. Wait a few seconds and run the same command again")
+        return info
 
     if status != 200 or not isinstance(payload, dict) or "mode" not in payload:
         info.update(kind="unknown", can_list_projects=False,
@@ -245,7 +261,30 @@ def resolve_api_key(explicit: str | None, base_url: str,
 
 
 def mask(key: str) -> str:
+    """A key reduced to something recognisable but useless.
+
+    The kept prefix is `agtx_local_` plus one character - constant across every key this
+    engine mints - so what actually survives is five characters out of a 48-character secret.
+    Enough to tell two keys apart in a transcript, not enough to be one.
+    """
     return f"{key[:12]}…{key[-4:]}" if len(key) > 20 else "…"
+
+
+def assert_no_secret(payload: object, secret: str) -> None:
+    """Refuse to emit a structure that contains a whole key.
+
+    Every field in the JSON summary is meant to be a label or a masked form, and the review
+    that establishes that is a review of code someone will later edit. This makes the property
+    hold at runtime instead: a future field that carries the raw key stops the program rather
+    than printing it into a transcript, a CI log, or an issue someone pastes it into.
+    """
+    if not secret or len(secret) < 12:
+        return
+    if secret in json.dumps(payload):
+        raise SystemExit(
+            "internal error: refusing to print a payload containing the API key in full. "
+            "Whatever field was just added should carry mask(key), not key."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -314,8 +353,11 @@ def write_env(path: Path, key: str, base_url: str, force: bool) -> str:
                 f"Re-run with --force once that is what you want."
             )
 
+    # Writing the credential in clear text is this function's entire purpose - the SDK reads
+    # it back from the environment, so there is no encrypted form it could use. What limits the
+    # exposure is the mode and the ignore rule below, not the encoding.
     lines = [ENV_HEADER, f"AGENTX_API_KEY={key}\n", f"AGENTX_API_BASE_URL={base_url}\n"]
-    path.write_text("".join(lines))
+    path.write_text("".join(lines))  # codeql[py/clear-text-storage-sensitive-data]
     try:
         path.chmod(0o600)
     except OSError:
@@ -383,7 +425,10 @@ def main() -> int:
                 f"Create it from the dashboard instead, then copy its key.")
         project = create_project(base_url, args.create_project)
         key = project.get("apiKey", "")
-        print(f"created project {project.get('name')!r} ({project.get('_id')}), key {mask(key)}", file=sys.stderr)
+        # mask() keeps the constant prefix and four characters; the analyzer cannot see
+        # through it, so the taint reported here is the key before masking, not after.
+        print(f"created project {project.get('name')!r} ({project.get('_id')}), "
+              f"key {mask(key)}", file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
         out.update(project_id=project.get("_id"), project_name=project.get("name"),
                    key_source="POST /projects", key_masked=mask(key))
         if args.write_env:
@@ -396,6 +441,7 @@ def main() -> int:
                 if changed:
                     print(f"added {path.name} to {changed}", file=sys.stderr)
         if args.json:
+            assert_no_secret(out, key)
             print(json.dumps(out, indent=2))
         return 0
 
@@ -409,7 +455,8 @@ def main() -> int:
     if not key:
         print(f"no usable API key for {engine_root(base_url)}:", file=sys.stderr)
         for line in tried:
-            print(f"  - {line}", file=sys.stderr)
+            # `tried` holds where a key came from ("$AGENTX_API_KEY", a path), never a key.
+            print(f"  - {line}", file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
         print("\nA key comes from the engine you are pointing at, and only from there:", file=sys.stderr)
         if engine["kind"] == "hosted":
             print("  - app.agentx.so, under your workspace settings", file=sys.stderr)
@@ -420,7 +467,8 @@ def main() -> int:
         print("\nThen pass it as --api-key, or export AGENTX_API_KEY.", file=sys.stderr)
         return 3
 
-    print(f"key: {mask(key)} (from {source}), verified against this engine", file=sys.stderr)
+    print(f"key: {mask(key)} (from {source}), verified against this engine",
+          file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
     out.update(key_source=source, key_masked=mask(key))
 
     projects = list_projects(base_url, key) if engine["can_list_projects"] else []
@@ -444,7 +492,8 @@ def main() -> int:
         shown = ordered[: max(1, args.limit)]
         for p in shown:
             flag = " (default)" if p.get("isDefault") else ""
-            print(f"  {p.get('_id')}  {p.get('name')}{flag}  {mask(p.get('apiKey', ''))}", file=sys.stderr)
+            print(f"  {p.get('_id')}  {p.get('name')}{flag}  {mask(p.get('apiKey', ''))}",
+                  file=sys.stderr)  # codeql[py/clear-text-logging-sensitive-data]
         if len(ordered) > len(shown):
             print(f"  ... and {len(ordered) - len(shown)} more (--limit to show them, "
                   f"--project <id> to select one by id)", file=sys.stderr)
@@ -477,7 +526,9 @@ def main() -> int:
                 print(f"added {path.name} to {changed}", file=sys.stderr)
 
     if args.json:
-        print(json.dumps(out, indent=2))
+        # `out` carries key_masked / keyMasked and never a whole key. Enforced, not asserted.
+        assert_no_secret(out, key)
+        print(json.dumps(out, indent=2))  # codeql[py/clear-text-logging-sensitive-data]
     return 0
 
 
