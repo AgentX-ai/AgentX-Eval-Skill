@@ -5,8 +5,8 @@
     "email": "marcin@agentx.so"
   },
   "metadata": {
-    "description": "AgentX plugins for Cursor — production tracing for your own agent, and evaluation triage against a self-hosted AgentX engine",
-    "version": "1.0.0"
+    "description": "AgentX for Cursor — production tracing for your own agent, and evaluation triage against a self-hosted AgentX engine",
+    "version": "2.4.0"
   },
   "plugins": [
     {

@@ -54,12 +54,33 @@ claude plugin install agentx@agentx
 > plugin. Uninstall both, then `claude plugin marketplace update agentx && claude plugin install
 > agentx@agentx`.
 
-This repo is also a Cursor marketplace (**Dashboard → Plugins → Team Marketplaces → Import from
-Repo**), and the skills install into any agent that reads the Agent Skills standard:
+### Cursor
+
+**Dashboard → Plugins → Team Marketplaces → Add Marketplace → Import from Repo**, and paste this
+repo's URL. Enable **Auto Refresh** to keep it current. The plugin's skills are discovered from
+`skills/` automatically.
+
+### Codex / ChatGPT
+
+```bash
+codex plugin marketplace add AgentX-ai/AgentX-Eval-Skill
+```
+
+Then restart the app and install **AgentX** from the Plugins Directory's marketplace picker.
+
+### Anything else
+
+The skills are plain `SKILL.md` folders, so they install into any agent that reads the
+[Agent Skills standard](https://agentskills.io) — Codex, Cursor, Copilot, Gemini CLI, Windsurf,
+Zed and the rest:
 
 ```bash
 npx skills add AgentX-ai/AgentX-Eval-Skill
 ```
+
+One repo serves all four paths. Each ecosystem reads its own manifest directory —
+`.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/` — over **one copy** of the skills,
+their references and their scripts.
 
 ## Run it
 

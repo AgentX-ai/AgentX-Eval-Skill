@@ -1,0 +1,20 @@
+{
+  "name": "agentx",
+  "interface": {
+    "displayName": "AgentX"
+  },
+  "plugins": [
+    {
+      "name": "agentx",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agentx"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
