@@ -1,5 +1,6 @@
 ---
-name: agentx-eval-fix
+name: eval-fix
+argument-hint: <evaluation-id> [extra instructions]
 description: >-
   Turn an AgentX self-host evaluation into a triaged code fix and a re-run against
   the same dataset, so a before-and-after comparison means something. Use whenever
@@ -298,7 +299,14 @@ section with where each half came from, printing the dataset's overridden criter
 separately when they differ. If you read the criteria off the dataset by hand,
 check that first.
 
-## Local workflow
+## The workflow
+
+Carry this out yourself, in order. Do not delegate it to a subagent. The evaluation id is `$1`;
+anything the user typed after it is extra instruction: `$ARGUMENTS`.
+
+**Ask which engine first** — see "Connect to the engine" above. One question, before anything is
+spent, because the address decides which database every number comes from and a run read from
+the wrong engine wastes the whole workflow, including the paid re-run at the end.
 
 ### 1. Get the analysis into the repo
 
@@ -315,11 +323,19 @@ with the repo as your working directory.
 The parts that matter most: write the mapping table before touching any code,
 keep the frozen surfaces frozen, and do not run the evaluation during the triage.
 
+Start from the lowest-rated rows and read outward. The single most valuable output is Table 2 —
+defects found by reading the source that a judge working from answer text alone could not have
+seen. **If Table 2 is empty, Phase 1 is not finished.**
+
 ### 3. Stop and show the mapping table
 
 `eval-analysis/mapping-<EVAL_ID>.md` is the deliverable of the triage and the
 checkpoint of the whole workflow. Everything up to here was free; the next step
 is not.
+
+**Spot-check the worst question with one direct agent invocation before claiming the fix works.**
+A prompt rule that looks right often is not, and one invocation is far cheaper than discovering
+that after a full run.
 
 Having summarised it, **ask with AskUserQuestion whether to re-run now** rather than
 ending on "let me know". Two options — re-run now, or not yet — with the cost stated
@@ -348,6 +364,10 @@ repeating because they are the expensive failures:
   a 404, so the pairing works in three of four combinations and fails silently in the
   fourth. If a report comes back empty, check the engine's analyze route before believing
   it. `fetch_analysis.py --analyze` calls the dashboard route directly and works either way.
+
+**Do not open a pull request before the re-run exists.** Until then there is no before-and-after
+to put in it, which is the only thing that makes it worth reviewing. Push the branch at step 3,
+offer the PR once the comparison is in hand, and say plainly if the numbers went the wrong way.
 
 `scripts/bootstrap.sh` builds a virtualenv from `requirements.txt`, a
 `pyproject.toml`, or packages you name on the command line.

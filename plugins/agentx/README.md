@@ -4,7 +4,7 @@ One plugin, two commands, one loop: get an agent's real runs into
 [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval), then turn what they measure into a
 code fix.
 
-| Command | What it does |
+| Skill | What it does |
 |---|---|
 | `/agentx-add-tracing` | Wires tracing into a Python agent that has none — key, SDK, and one span where the run begins. Documented below. |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
@@ -144,14 +144,12 @@ rather than resting on a review.
 
 | Path | What it is |
 |---|---|
-| `commands/agentx-add-tracing.md` | The `/agentx-add-tracing` slash command — the normal entry point |
-| `commands/eval-fix.md` | The `/eval-fix <id>` slash command, the plugin's other half |
-| `skills/agentx-tracing/SKILL.md` | The model: what to trace, and the two silent failures |
-| `skills/agentx-tracing/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
-| `skills/agentx-tracing/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
-| `skills/agentx-tracing/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
-| `skills/agentx-tracing/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
-| `skills/agentx-tracing/scripts/verify_trace.py` | One real trace, fetched back — plus `--capabilities` |
+| `skills/agentx-add-tracing/SKILL.md` | The model: what to trace, and the two silent failures |
+| `skills/agentx-add-tracing/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
+| `skills/agentx-add-tracing/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
+| `skills/agentx-add-tracing/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
+| `skills/agentx-add-tracing/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
+| `skills/agentx-add-tracing/scripts/verify_trace.py` | One real trace, fetched back — plus `--capabilities` |
 
 ## Why `--capabilities` exists
 
