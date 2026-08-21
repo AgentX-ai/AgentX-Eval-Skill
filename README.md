@@ -79,7 +79,12 @@ the comparison is keyed on stays frozen, or the second number means nothing.
 
 ## Install
 
-As a plugin, which is one command and gets updates:
+The skill is a plain `SKILL.md` folder, so it runs in any agent that loads the
+Agent Skills standard. Only the directory each one scans is different.
+
+### Claude Code
+
+As a plugin, which is one command, carries the `/eval-fix` command, and gets updates:
 
 ```bash
 claude plugin marketplace add AgentX-ai/AgentX-Eval-Skill
@@ -92,22 +97,35 @@ The same two steps work from `/plugin` inside a Claude Code session. Later,
 **Restart Claude Code afterwards.** Slash commands are loaded at startup, so
 `/eval-fix` does not exist in the session you installed from.
 
-Or copy the skill straight into your skills directory, if you would rather read
-the files than install anything:
+### Cursor
+
+This repo is a Cursor marketplace as well. On a team plan, open **Dashboard →
+Plugins → Team Marketplaces → Add Marketplace → Import from Repo** and paste this
+repo's URL; **Enable Auto Refresh** keeps it current as the skill changes.
+Without a team marketplace, use the directory install below — Cursor reads
+`.agents/skills/` too.
+
+### Codex, Antigravity, VS Code
+
+`.agents/skills/` is the one path Codex, Cursor, Antigravity and Copilot all
+read, so a single copy serves every one of them:
 
 ```bash
-git clone https://github.com/AgentX-ai/AgentX-Eval-Skill.git /tmp/agentx-eval-skill
-cp -r /tmp/agentx-eval-skill/plugins/agentx-eval-fix/skills/agentx-eval-fix \
-  ~/.claude/skills/
+mkdir -p .agents/skills && curl -fsSL https://github.com/AgentX-ai/AgentX-Eval-Skill/archive/main.tar.gz \
+  | tar -xz --strip-components=4 -C .agents/skills \
+    AgentX-Eval-Skill-main/plugins/agentx-eval-fix/skills/agentx-eval-fix
 ```
 
-Per-project instead of per-user works too — copy it to
-`<your-repo>/.claude/skills/` and keep it out of the repo under test, since the
-repo is the thing being measured and tooling in its `git status` ends up in the
-diff a reviewer reads:
+Swap `.agents/skills` for `~/.agents/skills` to install once for every repo
+instead of one — except Antigravity, whose user-level directory is
+`~/.gemini/config/skills/`. Claude Code reads `~/.claude/skills/` and
+`<repo>/.claude/skills/`.
+
+Either way, keep it out of the repo under test: that repo is the thing being
+measured, and tooling in its `git status` ends up in the diff a reviewer reads.
 
 ```bash
-echo '.claude/skills/agentx-eval-fix/' >> <your-repo>/.git/info/exclude
+echo '.agents/skills/agentx-eval-fix/' >> <your-repo>/.git/info/exclude
 ```
 
 ## Run it
@@ -277,9 +295,11 @@ Everything below is under `plugins/agentx-eval-fix/`.
 | `skills/agentx-eval-fix/scripts/fetch_analysis.py` | Evaluation, rubric and judge evidence by id, over plain HTTP |
 | `skills/agentx-eval-fix/scripts/bootstrap.sh` | Virtualenv setup for the repo under test |
 
-The nesting is what the plugin format expects: `.claude-plugin/marketplace.json`
-at the repo root declares the marketplace, and each plugin keeps its skills under
-`<plugin>/skills/<name>/`.
+The nesting is what both plugin formats expect: a marketplace manifest at the repo
+root declares the marketplace, and each plugin keeps its skills under
+`<plugin>/skills/<name>/`. Claude Code and Cursor use the same layout and differ
+only in the manifest directory — `.claude-plugin/` and `.cursor-plugin/` — so the
+skill, its references and its scripts are one copy serving both.
 
 Validated end to end on nine agents with deliberately planted defects, spanning
 levers in code, in a YAML config, in a data file, and in the evaluation harness

@@ -1,4 +1,5 @@
 ---
+name: eval-fix
 description: Triage an AgentX self-host evaluation against this repo's source and fix the agent
 argument-hint: <evaluation-id> [extra instructions]
 ---
