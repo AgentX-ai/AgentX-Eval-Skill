@@ -99,6 +99,15 @@ never enters the transcript. If you find yourself about to `cat
 pip install "agentx-python[<extra>]"     # the extra detect_stack.py named, if any
 ```
 
+`pip` here means the *project's* pip - `.venv/bin/pip`, `poetry add`, whatever the repo uses -
+and some venvs have none at all: uv creates them pip-less by default. `pip: command not found`
+or `No module named pip` in a repo that plainly has a virtualenv is that, not a broken venv,
+and the same install goes through uv pointed at the same interpreter:
+
+```bash
+uv pip install --python .venv/bin/python "agentx-python[<extra>]"
+```
+
 Add it to the repo's manifest too - `requirements.txt`, `pyproject.toml`, whichever it has.
 An install that only exists in one shell is an import error on the next machine.
 
