@@ -6,7 +6,7 @@ code fix.
 
 | Skill | What it does |
 |---|---|
-| `/agentx-init` | Sets a Python agent up on AgentX — key, SDK, one span where the run begins, then traces sent and read back to prove it. Documented below. |
+| `/instrument` | Sets a Python agent up on AgentX — key, SDK, one span where the run begins, then traces sent and read back to prove it. Documented below. |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
 
 They are one plugin because they are one story, and the seam between them is the reason to
@@ -15,13 +15,13 @@ execution path**, where one without it is judged on answer text alone.
 
 ---
 
-## `/agentx-init`
+## `/instrument`
 
 Sets a Python agent up on AgentX — key, SDK, instrumentation where it belongs, and a
 verification pass that does not take the diff's word for it.
 
 ```
-/agentx-init ─► survey the repo ─► key into .env.agentx ─► one span at the entry point
+/instrument ─► survey the repo ─► key into .env.agentx ─► one span at the entry point
                                                                           │
    grade the agent's own run ◄── 3 traces, fetched back ◄── auto-instrument the model client
 ```
@@ -68,7 +68,7 @@ Repo**) and a Codex marketplace (`codex plugin marketplace add AgentX-ai/AgentX-
 Or, for any agent that reads the Agent Skills standard:
 
 ```bash
-npx skills add AgentX-ai/AgentX-Eval-Skill --skill agentx-init
+npx skills add AgentX-ai/AgentX-Eval-Skill --skill instrument
 ```
 
 ## Run it
@@ -76,7 +76,7 @@ npx skills add AgentX-ai/AgentX-Eval-Skill --skill agentx-init
 From inside the repo that holds your agent:
 
 ```
-/agentx-init
+/instrument
 ```
 
 It asks at most three questions and no more: which engine (`local` by default), which entry
@@ -145,11 +145,11 @@ rather than resting on a review.
 
 | Path | What it is |
 |---|---|
-| `skills/agentx-init/SKILL.md` | The model: what to trace, and the three silent failures |
-| `skills/agentx-init/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
-| `skills/agentx-init/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
-| `skills/agentx-init/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
-| `skills/agentx-init/scripts/verify_trace.py` | Connection proven without writing anything, `--check` to grade the agent's own runs, `--capabilities` |
+| `skills/instrument/SKILL.md` | The model: what to trace, and the three silent failures |
+| `skills/instrument/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
+| `skills/instrument/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
+| `skills/instrument/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
+| `skills/instrument/scripts/verify_trace.py` | Connection proven without writing anything, `--check` to grade the agent's own runs, `--capabilities` |
 
 ## Why `--capabilities` exists
 

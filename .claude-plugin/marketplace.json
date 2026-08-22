@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "agentx",
-      "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-init sets up a Python agent and proves it with traces it reads back; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
+      "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /instrument sets up a Python agent and proves it with traces it reads back; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
       "source": "./plugins/agentx",
       "category": "development",
       "homepage": "https://github.com/AgentX-ai/AgentX-Eval-Skill"
