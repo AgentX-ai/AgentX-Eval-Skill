@@ -6,11 +6,11 @@ run yourself — then turn what they measure into a code fix.
 
 | Skill | What it does |
 |---|---|
-| `/agentx-add-tracing` | Wires tracing into a Python agent that has none: key, SDK, and one span where the run begins |
+| `/agentx-init` | Sets a Python agent up on AgentX: key, SDK, one span where the run begins, then traces sent and read back to prove it |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
 
 ```
-/agentx-add-tracing ──► traced runs ──► evaluation ──► /eval-fix ──► v1 vs v2
+/agentx-init ──► traced runs ──► evaluation ──► /eval-fix ──► v1 vs v2
 ```
 
 They are one plugin because they are one story. An evaluation result carrying a `traceId` is
@@ -87,7 +87,7 @@ their references and their scripts.
 From inside the repo that holds your agent — both commands read that source.
 
 ```
-/agentx-add-tracing
+/agentx-init
 ```
 
 Asks at most three questions: which engine, which entry point (only if several are plausible),
@@ -144,10 +144,8 @@ Everything is under `plugins/agentx/`.
 
 | Path | What it is |
 |---|---|
-| `commands/agentx-add-tracing.md` | The `/agentx-add-tracing` slash command |
-| `commands/eval-fix.md` | The `/eval-fix <id>` slash command |
-| `skills/agentx-add-tracing/` | Where to trace and where not to, plus the bootstrap module and three scripts |
-| `skills/eval-fix/` | Connecting to the engine, the triage brief, and the re-run brief |
+| `skills/agentx-init/` | The `/agentx-init` slash command: where to trace and where not to, plus the bootstrap module and three scripts |
+| `skills/eval-fix/` | The `/eval-fix <id>` slash command: connecting to the engine, the triage brief, and the re-run brief |
 
 Full detail on the tracing half is in [`plugins/agentx/README.md`](plugins/agentx/README.md).
 Each skill's `SKILL.md` is the reference for its own workflow.

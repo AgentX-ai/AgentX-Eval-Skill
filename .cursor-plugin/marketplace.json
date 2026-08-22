@@ -5,13 +5,13 @@
     "email": "marcin@agentx.so"
   },
   "metadata": {
-    "description": "AgentX for Cursor — production tracing for your own agent, and evaluation triage against a self-hosted AgentX engine",
-    "version": "2.4.1"
+    "description": "AgentX for Cursor \u2014 production tracing for your own agent, and evaluation triage against a self-hosted AgentX engine",
+    "version": "2.5.0"
   },
   "plugins": [
     {
       "name": "agentx",
-      "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-add-tracing instruments a Python agent; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
+      "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-init sets up a Python agent and proves it with traces it reads back; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
       "source": "./plugins/agentx"
     }
   ]

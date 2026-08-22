@@ -334,7 +334,7 @@ def pick(projects: list[dict], wanted: str | None) -> dict | None:
 # ---------------------------------------------------------------------------
 # .env.agentx
 # ---------------------------------------------------------------------------
-ENV_HEADER = "# AgentX tracing - written by the agentx-add-tracing skill.\n" \
+ENV_HEADER = "# AgentX tracing - written by the agentx-init skill.\n" \
              "# Local credentials. Not for version control.\n"
 
 

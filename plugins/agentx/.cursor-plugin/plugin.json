@@ -1,8 +1,8 @@
 {
   "name": "agentx",
   "displayName": "AgentX",
-  "version": "2.4.1",
-  "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-add-tracing instruments a Python agent; /eval-fix triages an evaluation against the source and re-runs it.",
+  "version": "2.5.0",
+  "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /agentx-init sets up a Python agent and proves it with traces it reads back; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
   "author": {
     "name": "AgentX",
     "email": "marcin@agentx.so"
