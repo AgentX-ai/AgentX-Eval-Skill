@@ -43,7 +43,7 @@ a fragment or a duplicate.
 
 ---
 
-## Phase 1 - Key, then dependency, then bootstrap
+## Phase 1 - Key, then dependency, then one client
 
 ### 1a. Identify the engine and pick the project
 
@@ -115,24 +115,63 @@ only `name`, `input`, `output` and `latency_ms`, so those keywords raise `TypeEr
 the agent at the first failed tool call. Generate against what the probe reports, not against
 what a README says.
 
-### 1c. The bootstrap module
+### 1c. Initialise the SDK once, in a file the repo already has
 
-Copy `<skill>/assets/agentx_tracing.py` into the
-repo - next to the entry point, or into the package, wherever a plain `from agentx_tracing
-import tracer` will resolve. Adjust nothing but its location.
+**Do not add a module for this.** The repo already has somewhere that reads configuration and
+hands out clients - the file that calls `load_dotenv()`, the settings module, whatever it calls
+its `config.py`. Two lines go there, and everything else imports `tracer` from it:
 
-It exists because three separate things go wrong without it:
+```python
+# myapp/config.py - beside the load_dotenv() this file already calls
+from agentx import AgentX
 
-- **`.env.agentx` is not read by anything.** It is not `.env`, and Python reads neither. The
-  module walks up from its own location to find the file, so an import from any working
-  directory still finds the key, and it loads with `setdefault` so a real environment
-  variable always wins - in production the platform supplies the key, and a checked-out dev
-  file that overrode it would quietly redirect production traces into someone's laptop project.
-- **`AgentX.from_env()` raises when `AGENTX_API_KEY` is absent.** Not warns - raises
-  `AgentXAuthError`, at import time. That is a teammate's first checkout, a CI job, and any
-  deploy where the secret has not been added yet. The module degrades to a no-op tracer with
-  the same interface, logs one line, and lets the agent run.
-- **The client owns a delivery thread.** One module-level instance, imported everywhere.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.agentx")   # the key and the base URL
+tracer = AgentX.from_env().tracer
+```
+
+Three things those two lines are doing, each of which breaks quietly if it moves:
+
+- **Loading `.env.agentx`.** Nothing reads it on its own - it is not `.env`, and Python reads
+  neither. Build the path from `__file__`, not a bare filename: a relative path resolves against
+  the working directory, so running the agent from anywhere but the repo root silently untraces
+  it. A repo without python-dotenv reads the file in four lines with `os.environ.setdefault`,
+  which also keeps the precedence right - a real environment variable wins, so production's key
+  is never overridden by a checked-out dev file.
+- **One client.** It owns a background delivery thread. One module-level instance, imported
+  everywhere; not one per call site.
+- **The base URL from that file, never a literal in the source.** Hardcode the wrong port and
+  nothing raises - the traces just leave for somewhere nobody is watching.
+
+**`AgentX.from_env()` raises `AgentXAuthError` when `AGENTX_API_KEY` is missing**, at import,
+because the constructor eagerly builds its evaluations client. So these two lines make AgentX a
+dependency of the repo: a checkout without `.env.agentx` fails at startup rather than running
+untraced. For a repo one team runs that is usually right, and it is loud rather than silent -
+but **say so in the Phase 7 report**, because it changes what happens for everyone else who runs
+this code.
+
+When the repo has to run for people who have no key - CI, an open-source repo, a deploy where the
+secret lands later - guard it. That costs exactly one `if`, because Phase 2 gives you exactly one
+span:
+
+```python
+tracer = AgentX.from_env().tracer if os.getenv("AGENTX_API_KEY") else None
+```
+
+```python
+if tracer is None:                      # no key here: run untraced rather than not at all
+    return handle(query)
+with tracer.trace(...) as span:
+    ...
+```
+
+and Phase 3's integration becomes `[AgentXCallbackHandler(tracer, ...)] if tracer else []`.
+
+Earlier versions of this skill copied a no-op tracer object into the repo so the call sites
+needed no branch at all. That is not worth a vendored file: a copied shim has to track the SDK's
+surface, and when it drifts it fails in precisely the configuration it exists to protect -
+`current_span` is a property on the real `Tracer`, and a shim defining it as a method hands the
+LangChain integration a truthy bound method instead of `None`. One `if` at one span site cannot
+drift.
 
 ---
 
@@ -141,7 +180,7 @@ It exists because three separate things go wrong without it:
 Wrap the handler body, not the framework and not the whole file.
 
 ```python
-from agentx_tracing import tracer
+from myapp.config import tracer        # wherever Phase 1c initialised it
 
 @tracer.trace("support-agent", framework="langchain", model="gpt-4o")
 def handle(query: str) -> str:
@@ -225,7 +264,7 @@ The patch functions are called once, on the client object, right where it is con
 ```python
 from openai import OpenAI
 from agentx.integrations.openai import patch_openai_client
-from agentx_tracing import tracer
+from myapp.config import tracer
 
 oai = OpenAI()
 patch_openai_client(oai, tracer, name="support-agent")
@@ -293,31 +332,35 @@ or a support conversation later.
 
 ---
 
-## Phase 6 - Verify the wiring, then verify the agent
+## Phase 6 - Verify the connection, then verify the agent
 
 Two commands, and they answer different questions. Running only the first is the most common
 way a job gets reported as finished while the dashboard stays empty.
 
-### 6a. The wiring
+### 6a. The connection
 
 ```bash
 <project-interpreter> <skill>/scripts/verify_trace.py
 ```
 
-This authenticates, then sends three synchronous traces and fetches each back by id: a plain
-span, a span with a tool call nested in it, and a second turn carrying the first's session id.
-Three rather than one because they fail independently - a key can be right while tool calls
-never register, and both can be right while `session_id` is dropped on the floor.
+This authenticates and reads the project back. That proves the key, the base URL and the engine -
+the three settings that stop failing loudly the moment the agent is running - and it closes a loop
+that is otherwise open: **trace delivery is fire-and-forget by design**, so a wrong base URL or a
+key from another project does not raise. It logs one warning and the traces go nowhere, which
+looks exactly like an agent nobody has run yet.
 
-It closes a loop that is otherwise open: **trace delivery is fire-and-forget by design** - it
-must never block or break the agent it watches - so a wrong base URL or a key from another
-project does not raise. It logs one warning and the traces go nowhere, which looks exactly
-like an agent nobody has run yet.
+**It writes nothing, and that is deliberate.** The engine serves no route to delete a trace, so a
+synthetic one sent to prove a point stays in Live Traces beside the agent's real traffic for good -
+three of them, named after this skill, in the project the user just chose for their production
+runs. `--self-test` still sends them when there is a reason to: a pipeline where nothing arrives
+at all, or an agent that cannot easily be run once. It is opt-in because it cannot be undone.
 
-### 6b. The agent
+### 6b. The agent - and the write path with it
 
-The self-test proves the key, the base URL and the engine. It proves **nothing** about the code
-just instrumented. So run the agent's own entry point once, for real, and grade what it wrote:
+A reachable engine proves **nothing** about the code just instrumented, and nothing about
+ingestion. Both come from the same place: run the agent's own entry point once, for real, and
+grade what it wrote. Those traces belong in the project, which is why they are the ones to
+prove the write path with:
 
 ```bash
 <project-interpreter> <skill>/scripts/verify_trace.py --check <agent-name>
@@ -354,8 +397,11 @@ Say, in this order:
    particular.
 3. Which tool calls are recorded, and which are left to the framework.
 4. What you deliberately did not trace, from Phase 5, and why.
-5. What the two verification passes returned - the self-test's three trace ids, and the
-   `--check` verdicts on the agent's own run - and the URL where the traces are.
+5. Whether the repo now **requires** an AgentX key to start, or degrades to running untraced
+   without one - whichever §1c left it as. It is the one change that affects people who never
+   asked for tracing.
+6. What the two verification passes returned - that the connection check reached the engine,
+   and the `--check` verdicts on the agent's own run - and the URL where the traces are.
 
 Then the payoff worth naming: **an evaluation result that carries a `traceId` is judged
 against the agent's real execution path**, and one that does not is judged on answer text

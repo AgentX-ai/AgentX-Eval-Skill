@@ -3,8 +3,8 @@ name: agentx-init
 description: >-
   Set an existing Python agent up on AgentX, end to end: read the project API key off the
   engine, write .env.agentx, install agentx-python from PyPI, initialise the SDK once,
-  instrument the calls that are worth tracing, and then prove it by sending traces and reading
-  them back. Use whenever someone wants to set up, initialise, add tracing to, or monitor their
+  instrument the calls that are worth tracing, and then prove it by running the agent and reading
+  its own traces back. Use whenever someone wants to set up, initialise, add tracing to, or monitor their
   own agent with AgentX; asks to "trace my agent", "instrument this repo", "hook this up to
   AgentX", "set up AgentX here", or "get my runs into Live Traces"; or has a self-host engine
   (AgentX-trace-eval, normally http://localhost:4700) and nothing reporting into it yet. Also
@@ -89,10 +89,10 @@ commit made with `git add -A` in a directory nobody has ever gitignored is how `
 mistake does not simply get deleted. Anything of that shape goes into `.gitignore` first, and say
 which ones you added.
 
-**4. Key, dependency, bootstrap.** Pick the project (see below), install `agentx-python` with
-the extra `detect_stack.py` named, add it to the repo's manifest, and copy
-`<skill>/assets/agentx_tracing.py` into the repo. Copy that file; do not rewrite it from memory.
-Then check what you actually got:
+**4. Key, dependency, client.** Pick the project (see below), install `agentx-python` with the
+extra `detect_stack.py` named, and add it to the repo's manifest. Then initialise the SDK **once**,
+in a file the repo already has - the one that reads config and hands out clients. Two lines, no
+new module; the brief's §1c has them. Then check what you actually got:
 
 ```bash
 <project-interpreter> <skill>/scripts/verify_trace.py --capabilities
@@ -105,12 +105,12 @@ Generate code against what that prints, not against a README.
 | Phase | What happens |
 |---|---|
 | 0 | Survey - framework, entry points, whether it is already traced |
-| 1 | Key into `.env.agentx`, dependency installed, bootstrap module copied in |
+| 1 | Key into `.env.agentx`, dependency installed, SDK initialised once in an existing module |
 | 2 | One span at the entry point |
 | 3 | Auto-instrument the model client |
 | 4 | Tool calls, where the repo rolls its own |
 | 5 | Deliberately leave the rest alone |
-| 6 | Send three traces and read them back, then grade the agent's own run |
+| 6 | Prove the connection, then run the agent and grade its own traces |
 | 7 | Report what is traced and what is not |
 
 Phase 5 - the list of things to leave alone - is as much of the job as the phases that add code.
@@ -118,17 +118,20 @@ Phase 5 - the list of things to leave alone - is as much of the job as the phase
 **6. Prove it, in two stages. Neither one is optional.**
 
 ```bash
-<project-interpreter> <skill>/scripts/verify_trace.py            # 1. the wiring
+<project-interpreter> <skill>/scripts/verify_trace.py            # 1. the connection
 <project-interpreter> <skill>/scripts/verify_trace.py --check <agent-name>   # 2. the agent
 ```
 
-The first sends three traces - a plain span, a span with a tool call nested in it, and a second
-turn sharing the first's session - and fetches each one back. Three rather than one because they
-fail separately: a key can be right while tool calls never register, and both can be right while
-`session_id` is dropped. That proves the key, the base URL and the engine.
+The first authenticates and reads the project back, which proves the key, the base URL and the
+engine - the three settings that fail silently once the agent is running. It **writes nothing**,
+deliberately: **the engine serves no route to delete a trace**, so anything sent to prove a point
+sits in Live Traces beside the agent's real traffic permanently. `--self-test` will send three
+synthetic traces if you need them - a pipeline where nothing arrives at all, or an agent you
+cannot easily run - and it says on the way in that they are permanent.
 
-**It proves nothing about the agent's own code**, which is the half people skip. So then run the
-agent's real entry point once, and grade what it produced:
+**A reachable engine proves nothing about the agent's own code**, which is the half people skip.
+So then run the agent's real entry point once - that is the write path proven on traffic that
+belongs in the project - and grade what it produced:
 
 | What `--check` asks | What a bad answer means |
 |---|---|
@@ -149,14 +152,15 @@ misconfigured, so the only evidence tracing works is a trace you fetched back.
 
 **7. Say what is traced, and what is not.** The entry point that became the span, the agent's
 name in the dashboard, the integration wired up and what it does not cover (streaming, in
-particular), what you deliberately left untraced, and the URL where the traces are.
+particular), what you deliberately left untraced, whether the repo now needs an AgentX key to
+start, and the URL where the traces are.
 
 ### The helpers
 
 ```bash
 <skill>/scripts/detect_stack.py .          # framework, entry points, existing instrumentation
 <skill>/scripts/agentx_key.py --json       # engine verdict, verified key, project list
-<skill>/scripts/verify_trace.py            # three traces, each fetched back by id
+<skill>/scripts/verify_trace.py            # authenticate and read the project; writes nothing
 <skill>/scripts/verify_trace.py --check <agent-name>   # grade the agent's own runs
 <skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
 ```
@@ -273,14 +277,17 @@ here raises.
   is the whole fix; see the brief's Phase 2.
 
 All three look identical from the outside: an agent that runs fine and a dashboard that stays empty.
-`verify_trace.py` exists to close that loop before anyone believes the wiring - it sends three
-synchronous traces, fetches each back by id, and then grades the agent's own runs with `--check`.
+`verify_trace.py` exists to close that loop before anyone believes the wiring - it authenticates
+and reads the project first, then grades the agent's own runs with `--check`.
 
 There is a fourth, opposite failure that does raise: **`AgentX.from_env()` throws
 `AgentXAuthError` when `AGENTX_API_KEY` is absent**, at import time, because the constructor
-eagerly builds its evaluations client. Unguarded, that turns a missing secret in CI or on a
-teammate's checkout into a crash in *their* application. The bootstrap module in `assets/`
-degrades to a no-op tracer instead. Do not skip it.
+eagerly builds its evaluations client. That is the one failure here that announces itself, and
+for a repo one team runs it is the right trade - AgentX becomes a dependency, and a missing key
+stops the process instead of quietly untracing it. It is the wrong trade when other people have
+to run this code without a key: CI, an open-source repo, a deploy where the secret lands later.
+The brief's §1c has the one-line guard for that case, and Phase 7 says to name whichever one you
+chose.
 
 ---
 
