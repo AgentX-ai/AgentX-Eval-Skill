@@ -105,15 +105,21 @@ An install that only exists in one shell is an import error on the next machine.
 Then check what you actually got:
 
 ```bash
-python3 <skill>/scripts/verify_trace.py --capabilities
+<project-interpreter> <skill>/scripts/verify_trace.py --capabilities
 ```
 
-Run it with the interpreter the agent runs under. **The published package and its docs are
+Not `python3` for this one - unlike the other two helpers it imports `agentx`, so it has to run
+where the SDK is installed. **The published package and its docs are
 not always in step**, and this is not hypothetical: on PyPI 0.6.30 the documented
 `span.add_tool_call(..., success=False, error=...)` does not exist - that signature takes
 only `name`, `input`, `output` and `latency_ms`, so those keywords raise `TypeError` inside
 the agent at the first failed tool call. Generate against what the probe reports, not against
 what a README says.
+
+And ask the probe rather than reaching for `inspect` yourself. If you do need to read the SDK
+directly, its tracer internals live in `agentx.tracing.tracer` (`Tracer`, `_TraceSpan`);
+`agentx.tracing` re-exports only `Tracer`, `IngestClient` and the CI types, so
+`from agentx.tracing import _TraceSpan` raises `ImportError`.
 
 ### 1c. Initialise the SDK once, in a file the repo already has
 

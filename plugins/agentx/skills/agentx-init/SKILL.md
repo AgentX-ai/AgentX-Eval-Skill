@@ -307,6 +307,13 @@ has it, which is why the brief prefers it everywhere.
 One command, before the code. It also confirms which interpreter has the SDK, which is the
 other half of the same question.
 
+**Ask the probe; do not hand-roll `inspect`.** When it does not answer what you need, import
+from the right place: the tracer's internals are in the **`agentx.tracing.tracer`** submodule -
+`Tracer`, `_TraceSpan` - while `agentx.tracing` itself re-exports only `Tracer`, `IngestClient`
+and the CI types. `from agentx.tracing import _TraceSpan` is an `ImportError`, and a step that
+opens with one reads as a broken skill before it has done anything. The same rule covers the
+other helpers: extend the command rather than improvising your own version of it.
+
 ---
 
 ## Reading a finished job
