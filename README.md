@@ -144,7 +144,7 @@ Everything is under `plugins/agentx/`.
 
 | Path | What it is |
 |---|---|
-| `skills/agentx-init/` | The `/agentx-init` slash command: where to trace and where not to, plus the bootstrap module and three scripts |
+| `skills/agentx-init/` | The `/agentx-init` slash command: where to trace and where not to, plus three scripts |
 | `skills/eval-fix/` | The `/eval-fix <id>` slash command: connecting to the engine, the triage brief, and the re-run brief |
 
 Full detail on the tracing half is in [`plugins/agentx/README.md`](plugins/agentx/README.md).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove the wiring works: send traces, then read them back.
+"""Prove the wiring works, without leaving anything behind in the project.
 
 Trace delivery is deliberately fire-and-forget - it must never block or break the agent it
 is watching - so a misconfigured SDK does not raise. It logs one warning and the traces go
@@ -13,26 +13,33 @@ nowhere, which looks exactly like an agent nobody has run yet. Three settings fa
 
 Two halves, because they answer different questions.
 
-**The self-test** (no arguments) sends three traces that between them exercise everything the
-dashboard needs to show a run: a plain span, a span with a tool call nested inside it, and a
-second turn sharing the first's session id. Each is sent synchronously so its id comes back,
-then fetched, then checked - registered, tool call recorded, both turns in one session. That
-proves the key, the base URL and the engine. It says nothing about the agent's own code.
+**The connection** (no arguments) authenticates against the engine and reads the project back.
+That is what proves the key, the base URL and the engine - the three settings above - and it is
+worth doing before any code is written, because every one of them fails silently afterwards. It
+**writes nothing**: an engine has no route to delete a trace, so anything sent to prove a point
+stays in that project next to the agent's real traffic forever.
 
-**The check** (`--check <agent-name>`) is the other half: run the agent for real, then read
-back what it produced and hold it against what a usable trace looks like - one trace per run,
-question and answer in `input`/`output`, token counts present, tool calls recorded, turns of a
-conversation sharing a session. That is what proves the *instrumentation*, and it is the step
-people skip, because a diff that looks right and a dashboard that stays empty feel unrelated.
+**The check** (`--check <agent-name>`) is the other half, and the write path with it: run the
+agent for real, then read back what it produced and hold it against what a usable trace looks
+like - one trace per run, question and answer in `input`/`output`, token counts present, tool
+calls recorded, turns of a conversation sharing a session. That is what proves the
+*instrumentation*, and it is the step people skip, because a diff that looks right and a
+dashboard that stays empty feel unrelated.
+
+`--self-test` sends three synthetic traces instead - a plain span, a span with a tool call, and
+a second turn sharing the first's session - and fetches each back by id. It is for the case where
+the agent cannot easily be run (no model key to hand, a server that needs a request) and for
+debugging a pipeline where nothing arrives at all. **Those three traces are permanent**, so it is
+opt-in rather than the default.
 
 Run it with the SAME interpreter the agent runs under - the one that has agentx-python
 installed - e.g. `.venv/bin/python verify_trace.py`.
 
 Usage:
-  verify_trace.py [--env .env.agentx] [--name agentx-init-check]
-  verify_trace.py --check support-desk    # grade the traces the real agent just produced
-  verify_trace.py --ping-only             # authenticate, write nothing
-  verify_trace.py --capabilities          # what the INSTALLED sdk supports, before writing code
+  verify_trace.py [--env .env.agentx]      # authenticate and read; writes nothing
+  verify_trace.py --check support-desk     # grade the traces the real agent just produced
+  verify_trace.py --self-test              # send three synthetic traces; they cannot be deleted
+  verify_trace.py --capabilities           # what the INSTALLED sdk supports, before writing code
 """
 from __future__ import annotations
 
@@ -43,7 +50,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 
 def load_env_file(path: Path) -> dict:
@@ -171,74 +178,6 @@ def grade(traces: List[dict]) -> List[tuple]:
     return checks
 
 
-def find_bootstrap(root: Path) -> Optional[Path]:
-    """Locate the repo's copy of agentx_tracing.py, if it has been placed yet."""
-    skip = {".venv", "venv", ".git", "node_modules", "__pycache__", ".tox", "site-packages"}
-    for path in sorted(root.rglob("agentx_tracing.py")):
-        if not any(part in skip for part in path.parts):
-            return path
-    return None
-
-
-def check_bootstrap_parity(path: Path, real_tracer, real_span) -> List[str]:
-    """Does the bootstrap's no-op fallback still match the real tracer's surface?
-
-    The whole point of that fallback is that code written against the real tracer keeps
-    working when no key is set. Every name the SDK gains and the shim does not is an
-    AttributeError waiting inside somebody's agent in exactly the configuration - a
-    teammate's first checkout, CI - the fallback exists to protect.
-
-    `current_span` is called out separately because it is the one that fails *without* an
-    AttributeError: it is a property on the real Tracer, and a shim that defines it as a
-    method returns a truthy bound method instead of None. The LangChain integration reads
-    `tracer.current_span` and branches on `is not None`, so a method here sends it down the
-    "inside a span" branch to call `_merge_child_run` on a method object.
-
-    Parsed rather than imported: importing the bootstrap constructs a client, and
-    --capabilities promises to touch no network.
-    """
-    import ast
-
-    try:
-        tree = ast.parse(path.read_text())
-    except (OSError, SyntaxError) as exc:
-        return [f"could not parse {path}: {exc}"]
-
-    classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
-    problems: List[str] = []
-
-    for shim_name, real in (("_NoopTracer", real_tracer), ("_NoopSpan", real_span)):
-        node = classes.get(shim_name)
-        if node is None:
-            problems.append(f"{path.name} defines no {shim_name}; cannot check parity")
-            continue
-
-        defined = {
-            b.target.id if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name) else
-            getattr(b, "name", None)
-            for b in node.body
-        } | {
-            t.id for b in node.body if isinstance(b, ast.Assign)
-            for t in b.targets if isinstance(t, ast.Name)
-        }
-        missing = sorted(n for n in dir(real) if not n.startswith("_") and n not in defined)
-        if missing:
-            problems.append(f"{shim_name} is missing: {', '.join(missing)}")
-
-        for b in node.body:
-            if isinstance(b, ast.FunctionDef) and b.name == "current_span":
-                is_property = any(
-                    isinstance(d, ast.Name) and d.id == "property" for d in b.decorator_list
-                )
-                if not is_property and isinstance(getattr(real, "current_span", None), property):
-                    problems.append(
-                        f"{shim_name}.current_span is a method; the real Tracer's is a property, "
-                        "so this returns a truthy bound method instead of None"
-                    )
-
-    return problems
-
-
 def report_capabilities() -> int:
     """What the installed agentx-python actually supports.
 
@@ -283,28 +222,6 @@ def report_capabilities() -> int:
         print("\n  This version's add_tool_call() takes no success=/error=. Use "
               "tracer.trace_tool_call(...) to record a failed tool call.", file=sys.stderr)
 
-    # The other half of the same question: the SDK moves, and the bootstrap's no-op fallback
-    # has to move with it or it stops being a fallback.
-    bootstrap = find_bootstrap(Path.cwd())
-    if bootstrap is None:
-        print("\n  bootstrap: no agentx_tracing.py in this tree yet - Phase 1c copies it in.",
-              file=sys.stderr)
-        caps["bootstrap"] = None
-    else:
-        problems = check_bootstrap_parity(bootstrap, Tracer, _TraceSpan)
-        caps["bootstrap"] = {"path": str(bootstrap), "problems": problems}
-        if problems:
-            print(f"\n  bootstrap {bootstrap}: the no-op fallback has drifted from this SDK",
-                  file=sys.stderr)
-            for problem in problems:
-                print(f"    - {problem}", file=sys.stderr)
-            print("    Code that works with a key set will raise without one - which is the "
-                  "only case the fallback exists for. Re-copy <skill>/assets/agentx_tracing.py.",
-                  file=sys.stderr)
-        else:
-            print(f"\n  bootstrap {bootstrap}: no-op fallback matches this SDK's surface",
-                  file=sys.stderr)
-
     print(json.dumps(caps, indent=2))
     return 0
 
@@ -312,12 +229,14 @@ def report_capabilities() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--env", default=".env.agentx", help="env file to load first (default: .env.agentx)")
-    ap.add_argument("--name", default="agentx-init-check", help="name prefix for the self-test traces")
+    ap.add_argument("--name", default="agentx-init-check", help="name prefix for --self-test traces")
     ap.add_argument("--check", metavar="AGENT",
                     help="grade the traces this agent already produced instead of sending any")
     ap.add_argument("--limit", type=int, default=25,
                     help="how many recent traces --check looks through (default 25)")
-    ap.add_argument("--ping-only", action="store_true", help="authenticate only; do not write a trace")
+    ap.add_argument("--self-test", action="store_true",
+                    help="send three synthetic traces to prove ingestion. They are permanent - "
+                         "the engine has no delete route - so prefer --check on a real run")
     ap.add_argument("--capabilities", action="store_true",
                     help="report the installed SDK's tracing surface and exit; touches no network")
     args = ap.parse_args()
@@ -354,9 +273,6 @@ def main() -> int:
         return 5
     print(f"authenticated against {ok.get('base_url')}", file=sys.stderr)
 
-    if args.ping_only:
-        return 0
-
     read_url = base_url or "https://api.agentx.so/api/v1"
     api_key = os.environ["AGENTX_API_KEY"]
     root = (base_url or "").replace("/api/v1", "")
@@ -384,7 +300,26 @@ def main() -> int:
         }, indent=2))
         return 0 if not failed else 8
 
-    # ---- the self-test: three traces that exercise what a run needs ---------------------
+    # ---- the connection, and nothing more, unless --self-test was asked for -------------
+    # Anything sent here is permanent: the engine serves no DELETE for a trace, so a synthetic
+    # one sits in Live Traces beside the agent's real traffic for good. The write path gets
+    # proven a few minutes later by --check, on traces that belong in the project anyway.
+    if not args.self_test:
+        recent = list_traces(read_url, api_key, limit=args.limit)
+        names = sorted({t.get("name") for t in recent if t.get("name")})
+        print(f"\n  reachable, and this key can read its project: {len(recent)} recent trace(s)"
+              + (f", from {', '.join(names[:4])}" if names else " - none recorded yet"),
+              file=sys.stderr)
+        if root:
+            print(f"  Live Traces: {root}", file=sys.stderr)
+        print("\n  Key, base URL and engine are proven. Nothing was written. That says nothing "
+              "about the agent's own code:\n  run the agent, then verify_trace.py --check "
+              "<agent-name>.", file=sys.stderr)
+        print(json.dumps({"base_url": base_url, "reachable": True,
+                          "recent_traces": len(recent), "wrote": False}, indent=2))
+        return 0
+
+    # ---- --self-test: three traces that exercise what a run needs -----------------------
     # sync=True is what makes span.trace_id available: the default queues the trace on a
     # background thread and returns nothing to look up.
     # monitor=False skips every ingest-time check, so a self-test never spends a judge call.
@@ -413,7 +348,8 @@ def main() -> int:
     sent.append(("session grouping", span.trace_id,
                  lambda t: t.get("sessionId") == session, "sessionId did not survive the round trip"))
 
-    print(f"\nself-test - three traces sent to {read_url}:", file=sys.stderr)
+    print(f"\nself-test - three traces sent to {read_url}. They stay in this project; the "
+          f"engine has no route to delete them:", file=sys.stderr)
     failures = 0
     results = []
     for label, trace_id, predicate, why in sent:

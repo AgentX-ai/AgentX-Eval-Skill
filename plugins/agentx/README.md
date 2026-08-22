@@ -49,8 +49,9 @@ that turns a missing secret in CI or on a teammate's checkout into a crash in th
 application — tracing breaking the thing it was added to watch.
 
 The skill handles all three: it puts one span where the run begins, writes the base URL next
-to the key so there is no default to get wrong, ships a bootstrap module that degrades to a
-no-op tracer instead of raising, and finishes by sending a real trace and fetching it back.
+to the key so there is no default to get wrong, initialises the client in one place so a
+missing key is a decision you make rather than a crash you discover, and finishes by sending
+a real trace and fetching it back.
 
 ## Install
 
@@ -88,7 +89,7 @@ fetched back by id.
 | File | What it is |
 |---|---|
 | `.env.agentx` | The project key and `AGENTX_API_BASE_URL`, mode 0600, added to `.gitignore` |
-| `agentx_tracing.py` | The bootstrap module: loads that file, builds one client, degrades to a no-op |
+| your config module | Two lines: load `.env.agentx`, build one `tracer`. No new file is added |
 | your entry point | One `tracer.trace(...)` span, and one line of framework auto-instrumentation |
 
 Nothing else. Phase 5 of the brief is a list of things it deliberately leaves alone —
@@ -146,10 +147,9 @@ rather than resting on a review.
 |---|---|
 | `skills/agentx-init/SKILL.md` | The model: what to trace, and the three silent failures |
 | `skills/agentx-init/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
-| `skills/agentx-init/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
 | `skills/agentx-init/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
 | `skills/agentx-init/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
-| `skills/agentx-init/scripts/verify_trace.py` | Three traces fetched back, `--check` to grade the agent's own runs, `--capabilities` |
+| `skills/agentx-init/scripts/verify_trace.py` | Connection proven without writing anything, `--check` to grade the agent's own runs, `--capabilities` |
 
 ## Why `--capabilities` exists
 
