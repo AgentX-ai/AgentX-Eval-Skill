@@ -1,0 +1,41 @@
+# The skills are prose a model executes literally, so a stale flag or a renamed SDK symbol is
+# not a typo - it is a command that fails in front of a user in the first seconds of the skill.
+# tests/audit_skills.py holds the documentation against the code it tells an agent to run.
+name: audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # The SDK moves on its own schedule. A weekly run turns the repo red when agentx-python
+  # renames something the briefs name, without waiting for someone to happen to commit.
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  structure:
+    # No SDK, no network: does the repo agree with itself, on the oldest Python the README
+    # promises and on the newest one anybody runs?
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python3 tests/audit_skills.py --skip-sdk
+
+  sdk:
+    # Does the repo still agree with the package the skills generate code against?
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "agentx-python[langchain]"
+      - run: python3 tests/audit_skills.py
