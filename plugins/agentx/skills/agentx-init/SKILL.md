@@ -47,7 +47,7 @@ because that address decides where every trace lands and a wrong one does not er
 **2. Survey the repo before touching it.**
 
 ```bash
-<skill>/scripts/detect_stack.py .
+python3 <skill>/scripts/detect_stack.py .
 ```
 
 Report what it found in three lines: the framework and its integration, the entry point a run
@@ -158,11 +158,11 @@ start, and the URL where the traces are.
 ### The helpers
 
 ```bash
-<skill>/scripts/detect_stack.py .          # framework, entry points, existing instrumentation
-<skill>/scripts/agentx_key.py --json       # engine verdict, verified key, project list
-<skill>/scripts/verify_trace.py            # authenticate and read the project; writes nothing
-<skill>/scripts/verify_trace.py --check <agent-name>   # grade the agent's own runs
-<skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
+python3 <skill>/scripts/detect_stack.py .   # framework, entry points, existing instrumentation
+python3 <skill>/scripts/agentx_key.py --json   # engine verdict, verified key, project list
+<project-interpreter> <skill>/scripts/verify_trace.py   # authenticate and read the project; writes nothing
+<project-interpreter> <skill>/scripts/verify_trace.py --check <agent-name>   # grade the agent's own runs
+<project-interpreter> <skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
 ```
 
 `<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/agentx-init` under the
@@ -219,7 +219,7 @@ Run the script once with `--json` - it returns the engine's verdict and the proj
 same call - then ask, with the engine's default marked as such:
 
 ```bash
-<skill>/scripts/agentx_key.py --host <address> --json --limit 8
+python3 <skill>/scripts/agentx_key.py --host <address> --json --limit 8
 ```
 
 Build the options from `projects[]`: name, and `(default)` where `isDefault`. Two more things
