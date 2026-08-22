@@ -173,6 +173,32 @@ Four rules, each of which is a real trace someone has had to throw away:
 Set `framework=` and `model=` when you know them. They cost nothing and they are what the
 dashboard groups and prices by.
 
+### Then flush on the way out, if the process is short-lived
+
+```python
+def main() -> None:
+    try:
+        run()
+    finally:
+        tracer.flush()      # default timeout 5s; pass timeout= over a slow link
+```
+
+Traces are queued in memory and drained by a background **daemon** thread, and the SDK
+registers no `atexit` hook - so interpreter shutdown kills that thread mid-queue instead of
+waiting for it. A process that exits promptly takes its undelivered traces with it. This is
+the silent failure that looks most like a bug in the instrumentation: the wiring is right, the
+run happened, the diff is correct, and the dashboard stays empty.
+
+| Shape | Flush? |
+|---|---|
+| CLI, script, cron job, one-shot task | **Yes** - in a `finally`, so a crash still ships what it has |
+| Test suite that asserts on traces | **Yes** - before the assertions, not after |
+| Serverless / FaaS handler | **Yes** - the runtime freezes or reaps the process between invocations |
+| Long-running server or worker | No - the thread keeps up, and flushing per request just adds latency |
+
+Flush once, at the process boundary - not per run, and not inside the span. `verify_trace.py`
+needs none of this: `sync=True` already blocks until the engine acknowledges.
+
 ---
 
 ## Phase 3 - Auto-instrument the model client
@@ -285,6 +311,9 @@ Then run the agent's own entry point once, for real, and look at the trace:
 - Does the span tree show the model calls and tool calls nested under it, or is it flat?
 - Are `input` and `output` the question and the answer, in readable form?
 - Do token counts appear? If not, the model client is not auto-instrumented (Phase 3).
+- **Did the run arrive at all?** `verify_trace.py` passing and the agent's own run showing
+  nothing is the flush case, not a wiring case - the process exited before the daemon thread
+  drained (Phase 2). A short-lived entry point with no `flush()` is the first thing to check.
 
 A flat trace with no children means the model client was patched but no span was open, or
 the integration was constructed but never passed to the framework.

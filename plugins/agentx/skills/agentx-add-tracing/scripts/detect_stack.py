@@ -113,6 +113,34 @@ def iter_python(root: Path) -> list[Path]:
     return sorted(out)
 
 
+def local_module_names(root: Path) -> set[str]:
+    """Top-level names the repo itself defines, which therefore are not third-party packages.
+
+    `agents` is the collision that matters: it is the OpenAI Agents SDK's import name *and*
+    what half the agent repos in existence call their own package. `from agents.billing.agent
+    import ...` then reads as the OpenAI SDK, and the report tells someone to install
+    `agentx-python[openai-agents]` and wire an `AgentXTracingProcessor` into a LangChain repo
+    that has no OpenAI Agents SDK anywhere in it.
+
+    A local name always wins, because on `sys.path` it does: the repo's own package shadows an
+    installed one of the same name. Namespace packages count - a directory of `.py` files with
+    no `__init__.py` still imports - so the test is "does this directory hold Python", not
+    "does it declare itself a package".
+    """
+    names: set[str] = set()
+    for base in (root, root / "src"):
+        if not base.is_dir():
+            continue
+        for child in base.iterdir():
+            if child.name in SKIP_DIRS or child.name.startswith("."):
+                continue
+            if child.is_dir() and any(child.glob("*.py")):
+                names.add(child.name)
+            elif child.is_file() and child.suffix == ".py":
+                names.add(child.stem)
+    return names
+
+
 def decorator_name(node: ast.AST) -> str:
     """`@app.post("/chat")` -> 'app.post'. Best effort; unknown shapes come back empty."""
     if isinstance(node, ast.Call):
@@ -181,10 +209,21 @@ def entrypoint_kind(facts: FileFacts) -> str | None:
     return "script main" if facts.has_main_guard else None
 
 
-def uses_llm(facts: FileFacts) -> bool:
-    if facts.imports & set(INTEGRATIONS):
+def uses_llm(facts: FileFacts, local: set[str] = frozenset(),
+             llm_locals: set[str] = frozenset()) -> bool:
+    """Does a run through this file reach a model?
+
+    `llm_locals` are the repo's own top-level packages that import a framework somewhere
+    inside them. A CLI whose only imports are `agents` and `core` still reaches a model when
+    those packages do - the framework is one hop away, not absent - and that file is exactly
+    the entry point a top-level span belongs on. Without this, a tidy repo that keeps its
+    framework out of `main.py` ends up with no starred candidate at all.
+    """
+    if (facts.imports & set(INTEGRATIONS)) - set(local):
         return True
-    return any(d.startswith(prefix) for d in facts.dotted for prefix in DOTTED_INTEGRATIONS)
+    if any(d.startswith(prefix) for d in facts.dotted for prefix in DOTTED_INTEGRATIONS):
+        return True
+    return bool(facts.imports & set(llm_locals))
 
 
 HANDLER_DECORATORS = ("route", "get", "post", "put", "patch", "delete", "task", "command",
@@ -223,10 +262,12 @@ def main() -> int:
     files = iter_python(root)
     scanned = [f for f in (scan_file(p) for p in files) if f is not None]
 
+    local = local_module_names(root)
+
     integrations: dict[str, dict] = {}
     for facts in scanned:
         for mod in facts.imports:
-            if mod in INTEGRATIONS:
+            if mod in INTEGRATIONS and mod not in local:
                 label, entry, extra = INTEGRATIONS[mod]
                 integrations.setdefault(label, {"integration": entry, "extra": extra, "files": []})
                 integrations[label]["files"].append(str(facts.path.relative_to(root)))
@@ -236,6 +277,18 @@ def main() -> int:
                     integrations.setdefault(label, {"integration": entry, "extra": extra, "files": []})
                     integrations[label]["files"].append(str(facts.path.relative_to(root)))
 
+    # Which of the repo's own packages lead to a model, so a file that only imports those is
+    # still recognised as the place a run begins.
+    llm_locals: set[str] = set()
+    for facts in scanned:
+        if not uses_llm(facts, local):
+            continue
+        parts = facts.path.relative_to(root).parts
+        parts = parts[1:] if parts and parts[0] == "src" else parts
+        if not parts:
+            continue
+        llm_locals.add(parts[0] if len(parts) > 1 else Path(parts[0]).stem)
+
     entrypoints = []
     for facts in scanned:
         kind = entrypoint_kind(facts)
@@ -244,7 +297,7 @@ def main() -> int:
         entrypoints.append({
             "file": str(facts.path.relative_to(root)),
             "kind": kind,
-            "calls_llm": uses_llm(facts),
+            "calls_llm": uses_llm(facts, local, llm_locals),
             "handlers": [h.replace(str(root) + "/", "") for h in handler_lines(facts)],
             "tools": [t.replace(str(root) + "/", "") for t in tool_lines(facts)],
         })
