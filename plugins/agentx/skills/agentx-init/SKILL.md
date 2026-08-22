@@ -1,15 +1,16 @@
 ---
-name: agentx-add-tracing
+name: agentx-init
 description: >-
-  Wire AgentX production tracing into an existing Python agent, end to end: read the project
-  API key off the engine, write .env.agentx, install agentx-python from PyPI, initialise the
-  SDK once, and instrument the calls that are worth tracing. Use whenever someone wants to add
-  tracing, observability, or monitoring to their own agent with AgentX; asks to "trace my
-  agent", "instrument this repo", "hook this up to AgentX", or "get my runs into Live Traces";
-  or has a self-host engine (AgentX-trace-eval, normally http://localhost:4700) and nothing
-  reporting into it yet. Also use when traces are configured but not arriving, since the SDK
-  fails silently by design. The core move is one span where the run begins plus one line of
-  framework auto-instrumentation - not a decorator on every function.
+  Set an existing Python agent up on AgentX, end to end: read the project API key off the
+  engine, write .env.agentx, install agentx-python from PyPI, initialise the SDK once,
+  instrument the calls that are worth tracing, and then prove it by sending traces and reading
+  them back. Use whenever someone wants to set up, initialise, add tracing to, or monitor their
+  own agent with AgentX; asks to "trace my agent", "instrument this repo", "hook this up to
+  AgentX", "set up AgentX here", or "get my runs into Live Traces"; or has a self-host engine
+  (AgentX-trace-eval, normally http://localhost:4700) and nothing reporting into it yet. Also
+  use when traces are configured but not arriving, since the SDK fails silently by design. The
+  core move is one span where the run begins plus one line of framework auto-instrumentation -
+  not a decorator on every function - and it is not finished until a trace has been fetched back.
 ---
 
 # Put an agent's real runs into AgentX
@@ -109,21 +110,42 @@ Generate code against what that prints, not against a README.
 | 3 | Auto-instrument the model client |
 | 4 | Tool calls, where the repo rolls its own |
 | 5 | Deliberately leave the rest alone |
-| 6 | Send a real trace and read it back |
+| 6 | Send three traces and read them back, then grade the agent's own run |
 | 7 | Report what is traced and what is not |
 
 Phase 5 - the list of things to leave alone - is as much of the job as the phases that add code.
 
-**6. Prove it with a real trace.**
+**6. Prove it, in two stages. Neither one is optional.**
 
 ```bash
-<project-interpreter> <skill>/scripts/verify_trace.py
+<project-interpreter> <skill>/scripts/verify_trace.py            # 1. the wiring
+<project-interpreter> <skill>/scripts/verify_trace.py --check <agent-name>   # 2. the agent
 ```
 
-Then run the agent's own entry point once and look at what arrived: one trace per run, model and
-tool calls nested under it, `input` and `output` readable as a question and an answer, token
-counts present. **Do not report success on the strength of the diff** - the SDK does not raise
-when it is misconfigured, so the only evidence tracing works is a trace you fetched back.
+The first sends three traces - a plain span, a span with a tool call nested in it, and a second
+turn sharing the first's session - and fetches each one back. Three rather than one because they
+fail separately: a key can be right while tool calls never register, and both can be right while
+`session_id` is dropped. That proves the key, the base URL and the engine.
+
+**It proves nothing about the agent's own code**, which is the half people skip. So then run the
+agent's real entry point once, and grade what it produced:
+
+| What `--check` asks | What a bad answer means |
+|---|---|
+| Did any trace register? | The span never opened, or the process exited before the queue drained (Phase 2) |
+| Are `input`/`output` prose? | A serialised request object is in there, and no judge can score it |
+| Are token counts present? | The model client is not auto-instrumented (Phase 3) |
+| Are tool calls recorded? | Phase 3's integration was built but never handed to the framework, or Phase 4 was skipped |
+| Do turns share a session? | `session_id` is not being passed, so every turn is its own conversation |
+
+The last two come back as **WARN**, not FAIL, and only FAIL moves the exit code. An agent with
+no tools should record no tool calls, and four independent one-shot runs should each have their
+own session - in the data those are indistinguishable from broken wiring. **A WARN is a question
+addressed to you**, and you are the one who knows which kind of agent this is: read it against
+what the repo actually does and say which it was in the Phase 7 report.
+
+**Do not report success on the strength of the diff.** The SDK does not raise when it is
+misconfigured, so the only evidence tracing works is a trace you fetched back.
 
 **7. Say what is traced, and what is not.** The entry point that became the span, the agent's
 name in the dashboard, the integration wired up and what it does not cover (streaming, in
@@ -134,11 +156,12 @@ particular), what you deliberately left untraced, and the URL where the traces a
 ```bash
 <skill>/scripts/detect_stack.py .          # framework, entry points, existing instrumentation
 <skill>/scripts/agentx_key.py --json       # engine verdict, verified key, project list
-<skill>/scripts/verify_trace.py            # send one trace, fetch it back by id
+<skill>/scripts/verify_trace.py            # three traces, each fetched back by id
+<skill>/scripts/verify_trace.py --check <agent-name>   # grade the agent's own runs
 <skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
 ```
 
-`<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing` under the
+`<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/agentx-init` under the
 plugin, or wherever `npx skills add` unpacked it. Resolve it once and reuse it.
 
 ---
@@ -250,10 +273,10 @@ here raises.
   is the whole fix; see the brief's Phase 2.
 
 All three look identical from the outside: an agent that runs fine and a dashboard that stays empty.
-`verify_trace.py` exists to close that loop before anyone believes the wiring - it sends one
-synchronous trace and then fetches it back by id.
+`verify_trace.py` exists to close that loop before anyone believes the wiring - it sends three
+synchronous traces, fetches each back by id, and then grades the agent's own runs with `--check`.
 
-There is a third, opposite failure that does raise: **`AgentX.from_env()` throws
+There is a fourth, opposite failure that does raise: **`AgentX.from_env()` throws
 `AgentXAuthError` when `AGENTX_API_KEY` is absent**, at import time, because the constructor
 eagerly builds its evaluations client. Unguarded, that turns a missing secret in CI or on a
 teammate's checkout into a crash in *their* application. The bootstrap module in `assets/`

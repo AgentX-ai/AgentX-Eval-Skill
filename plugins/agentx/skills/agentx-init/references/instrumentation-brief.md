@@ -1,7 +1,7 @@
 # Instrumenting a repo, in order
 
 `<skill>` below is this skill's own directory. Installed as a Claude Code plugin that is
-`${CLAUDE_PLUGIN_ROOT}/skills/agentx-add-tracing`; installed standalone with `npx skills add`
+`${CLAUDE_PLUGIN_ROOT}/skills/agentx-init`; installed standalone with `npx skills add`
 it is wherever the agent unpacked the skill. Resolve it once and reuse it.
 
 Carry this out against the repo you are inside. Every phase ends in something checkable, and
@@ -293,30 +293,55 @@ or a support conversation later.
 
 ---
 
-## Phase 6 - Verify, then run the real thing
+## Phase 6 - Verify the wiring, then verify the agent
+
+Two commands, and they answer different questions. Running only the first is the most common
+way a job gets reported as finished while the dashboard stays empty.
+
+### 6a. The wiring
 
 ```bash
 <project-interpreter> <skill>/scripts/verify_trace.py
 ```
 
-This authenticates, sends one synchronous trace with a tool call, and fetches it back by id.
+This authenticates, then sends three synchronous traces and fetches each back by id: a plain
+span, a span with a tool call nested in it, and a second turn carrying the first's session id.
+Three rather than one because they fail independently - a key can be right while tool calls
+never register, and both can be right while `session_id` is dropped on the floor.
+
 It closes a loop that is otherwise open: **trace delivery is fire-and-forget by design** - it
 must never block or break the agent it watches - so a wrong base URL or a key from another
 project does not raise. It logs one warning and the traces go nowhere, which looks exactly
 like an agent nobody has run yet.
 
-Then run the agent's own entry point once, for real, and look at the trace:
+### 6b. The agent
 
-- Is there **one** trace for one run, not three?
-- Does the span tree show the model calls and tool calls nested under it, or is it flat?
-- Are `input` and `output` the question and the answer, in readable form?
-- Do token counts appear? If not, the model client is not auto-instrumented (Phase 3).
-- **Did the run arrive at all?** `verify_trace.py` passing and the agent's own run showing
-  nothing is the flush case, not a wiring case - the process exited before the daemon thread
-  drained (Phase 2). A short-lived entry point with no `flush()` is the first thing to check.
+The self-test proves the key, the base URL and the engine. It proves **nothing** about the code
+just instrumented. So run the agent's own entry point once, for real, and grade what it wrote:
 
-A flat trace with no children means the model client was patched but no span was open, or
-the integration was constructed but never passed to the framework.
+```bash
+<project-interpreter> <skill>/scripts/verify_trace.py --check <agent-name>
+```
+
+| Check | Verdict | What a bad answer means |
+|---|---|---|
+| traces registered | FAIL | The span never opened - or the process exited before the queue drained (Phase 2). `verify_trace.py` passing while this fails is the flush case, not a wiring case. |
+| `input`/`output` are prose | FAIL | A serialised request object is in there. It renders, it looks instrumented, and no evaluation can score it. |
+| token counts present | FAIL | The model client is not auto-instrumented (Phase 3). |
+| tool calls recorded | WARN | The integration was constructed but never handed to the framework, or Phase 4 was skipped - unless the agent genuinely calls no tools. |
+| turns share a session | WARN | `session_id` is not being passed, so every turn is its own conversation (Phase 2) - unless these really were independent one-shot runs. |
+
+Only FAIL moves the exit code, so a pass cannot be assumed from output nobody read. The two
+WARNs are the questions the traces cannot answer by themselves: no tool calls is correct for an
+agent with no tools, and one session per trace is correct for one-shot runs. **Both are
+identical in the data to the wiring being broken**, which is why they are neither green nor red
+- answer them from the repo, and say which it was in Phase 7.
+
+Two more judgements no script makes for you:
+
+- **Is there one trace per run, not three?** Two traces for one run is a second top-level span,
+  usually a decorator left on a function that is also called directly.
+- **Did anything get traced that should not have been?** Phase 5 is that list.
 
 ---
 
@@ -329,7 +354,8 @@ Say, in this order:
    particular.
 3. Which tool calls are recorded, and which are left to the framework.
 4. What you deliberately did not trace, from Phase 5, and why.
-5. The smoke trace's id and the URL where the traces are.
+5. What the two verification passes returned - the self-test's three trace ids, and the
+   `--check` verdicts on the agent's own run - and the URL where the traces are.
 
 Then the payoff worth naming: **an evaluation result that carries a `traceId` is judged
 against the agent's real execution path**, and one that does not is judged on answer text

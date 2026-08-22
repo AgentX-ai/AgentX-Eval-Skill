@@ -6,7 +6,7 @@ code fix.
 
 | Skill | What it does |
 |---|---|
-| `/agentx-add-tracing` | Wires tracing into a Python agent that has none — key, SDK, and one span where the run begins. Documented below. |
+| `/agentx-init` | Sets a Python agent up on AgentX — key, SDK, one span where the run begins, then traces sent and read back to prove it. Documented below. |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
 
 They are one plugin because they are one story, and the seam between them is the reason to
@@ -15,15 +15,15 @@ execution path**, where one without it is judged on answer text alone.
 
 ---
 
-## `/agentx-add-tracing`
+## `/agentx-init`
 
-Wires production tracing into a Python agent that has none — key, SDK, and instrumentation
-where it belongs.
+Sets a Python agent up on AgentX — key, SDK, instrumentation where it belongs, and a
+verification pass that does not take the diff's word for it.
 
 ```
-/agentx-add-tracing ─► survey the repo ─► key into .env.agentx ─► one span at the entry point
+/agentx-init ─► survey the repo ─► key into .env.agentx ─► one span at the entry point
                                                                           │
-        a trace you fetched back ◄── verify ◄── auto-instrument the model client
+   grade the agent's own run ◄── 3 traces, fetched back ◄── auto-instrument the model client
 ```
 
 ## The problem it solves
@@ -67,7 +67,7 @@ Repo**) and a Codex marketplace (`codex plugin marketplace add AgentX-ai/AgentX-
 Or, for any agent that reads the Agent Skills standard:
 
 ```bash
-npx skills add AgentX-ai/AgentX-Eval-Skill --skill agentx-add-tracing
+npx skills add AgentX-ai/AgentX-Eval-Skill --skill agentx-init
 ```
 
 ## Run it
@@ -75,7 +75,7 @@ npx skills add AgentX-ai/AgentX-Eval-Skill --skill agentx-add-tracing
 From inside the repo that holds your agent:
 
 ```
-/agentx-add-tracing
+/agentx-init
 ```
 
 It asks at most three questions and no more: which engine (`local` by default), which entry
@@ -144,12 +144,12 @@ rather than resting on a review.
 
 | Path | What it is |
 |---|---|
-| `skills/agentx-add-tracing/SKILL.md` | The model: what to trace, and the two silent failures |
-| `skills/agentx-add-tracing/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
-| `skills/agentx-add-tracing/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
-| `skills/agentx-add-tracing/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
-| `skills/agentx-add-tracing/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
-| `skills/agentx-add-tracing/scripts/verify_trace.py` | One real trace, fetched back — plus `--capabilities` |
+| `skills/agentx-init/SKILL.md` | The model: what to trace, and the three silent failures |
+| `skills/agentx-init/references/instrumentation-brief.md` | The core artifact. Eight phases, executed in order |
+| `skills/agentx-init/assets/agentx_tracing.py` | Bootstrap module copied into the target repo |
+| `skills/agentx-init/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
+| `skills/agentx-init/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
+| `skills/agentx-init/scripts/verify_trace.py` | Three traces fetched back, `--check` to grade the agent's own runs, `--capabilities` |
 
 ## Why `--capabilities` exists
 
