@@ -25,6 +25,12 @@ are simply not recorded, and one line says so.
 
 **Being constructed once.** The client owns a background delivery thread. One module-level
 instance, imported everywhere, is the whole design.
+
+One thing this module deliberately does *not* do is flush. That thread is a daemon and the SDK
+registers no `atexit` hook, so an interpreter shutdown kills it mid-queue and a short-lived
+process - a CLI, a cron job, a serverless handler, a test run - can exit with its last traces,
+or all of them, undelivered. Only the entry point knows when it is finished, so it is the entry
+point that calls `tracer.flush()` on the way out. A long-running server does not need to.
 """
 
 from __future__ import annotations
@@ -63,9 +69,39 @@ def _load_env_file(filename: str = ENV_FILENAME) -> Optional[Path]:
 
 # ---------------------------------------------------------------------------
 # No-op fallback - same surface as the real tracer, does nothing at all.
+#
+# "The same surface" is the entire contract here, and approximately-the-same is what breaks
+# it. Two shapes have to match `agentx.tracing.tracer` exactly:
+#
+#   - **`current_span` is a property there, not a method.** The LangChain integration reads
+#     it as `tracer.current_span` and branches on `is not None`. A method here hands back a
+#     truthy bound method, so the handler takes the "inside a span" branch and calls
+#     `_merge_child_run` on it - and tracing breaks the agent in precisely the configuration
+#     this class exists to keep running.
+#   - **every tracing call the SDK offers has to exist.** A RAG project reaching for
+#     `tracer.record_retrieval(...)` with no key set dies on AttributeError otherwise.
+#
+# The evaluation and CI methods at the bottom are deliberately *not* no-ops; the note there
+# explains why.
 # ---------------------------------------------------------------------------
+class _NoopRecorder:
+    """Stands in for the handles `trace_tool_call()` and `trace_retrieval()` yield.
+
+    Carries every attribute either real recorder exposes, so a `with` block that assigns to
+    `output`, `success`, `error` or `doc_count` reads the same with tracing off as on.
+    """
+
+    def __init__(self) -> None:
+        self.input: Any = None
+        self.output: Any = None
+        self.success: Optional[bool] = None
+        self.error: Optional[str] = None
+        self.doc_count: Optional[int] = None
+
+
 class _NoopSpan:
     trace_id = None
+    span_id = None
 
     def __init__(self) -> None:
         self.input: Any = None
@@ -82,6 +118,9 @@ class _NoopSpan:
         # because an untouched coroutine function is still a coroutine function.
         return fn
 
+    def child_span(self, *args: Any, **kwargs: Any) -> "_NoopSpan":
+        return _NoopSpan()
+
     def add_tool_call(self, *args: Any, **kwargs: Any) -> None:
         pass
 
@@ -94,21 +133,61 @@ class _NoopTracer:
         return _NoopSpan()
 
     @contextmanager
-    def trace_tool_call(self, name: str, *, input: Any = None) -> Iterator[_NoopSpan]:
-        yield _NoopSpan()
+    def trace_tool_call(self, name: str, *, input: Any = None) -> Iterator[_NoopRecorder]:
+        yield _NoopRecorder()
 
     def record_tool_call(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    @contextmanager
+    def trace_retrieval(self, name: str = "Retrieval", *, query: Any = None) -> Iterator[_NoopRecorder]:
+        yield _NoopRecorder()
+
+    def record_retrieval(self, *args: Any, **kwargs: Any) -> None:
         pass
 
     @contextmanager
     def use_span(self, span: Any) -> Iterator[Any]:
         yield span
 
+    @property
     def current_span(self) -> None:
+        # A property, not a method - see the note above this class.
         return None
 
     def flush(self, timeout: float = 5.0) -> None:
         pass
+
+    # -- evaluation and CI --------------------------------------------------------------
+    # These return a result the caller acts on: a score, a pass rate, a gate decision. A
+    # silent no-op returning None would protect nothing - it would let a scoring run report
+    # nothing as though it were something, which is the same silent-success failure the rest
+    # of this file exists to prevent. So: spans and tool calls degrade quietly, because the
+    # agent's own work must not depend on tracing; a scoring run that cannot score says so.
+    def _unavailable(self, method: str) -> None:
+        raise RuntimeError(
+            f"tracer.{method}() needs a real AgentX client, and tracing is disabled because "
+            "AGENTX_API_KEY is not set. Tracing calls degrade to no-ops on purpose; "
+            "evaluation and CI calls do not, because they return a result you act on."
+        )
+
+    def evaluate_trace(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("evaluate_trace")
+
+    def run_eval(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("run_eval")
+
+    def create_ci_run(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("create_ci_run")
+
+    def get_ci_run(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("get_ci_run")
+
+    def finalize_ci_run(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("finalize_ci_run")
+
+    def submit_result(self, *args: Any, **kwargs: Any) -> None:
+        self._unavailable("submit_result")
 
 
 # ---------------------------------------------------------------------------

@@ -232,18 +232,24 @@ conversation, and `assert_no_secret()` enforces that at runtime rather than trus
 
 ---
 
-## Two things that fail silently
+## Three things that fail silently
 
-Both are the same design decision seen from two sides: **trace delivery is fire-and-forget,
-because tracing must never block or break the agent it watches.** Nothing here raises.
+All three are the same design decision seen from different sides: **trace delivery is
+fire-and-forget, because tracing must never block or break the agent it watches.** Nothing
+here raises.
 
 - **`AGENTX_API_BASE_URL` unset.** The SDK defaults to the hosted platform, so a self-host
   user's traces leave for `api.agentx.so` and never arrive anywhere they are looking. This is
   why the base URL is written into `.env.agentx` next to the key, not left to a default.
 - **A key from a different project.** The traces are accepted and stored, and are invisible to
   the key doing the looking.
+- **The process exits before the queue drains.** Traces ship on a background *daemon* thread
+  and the SDK registers no `atexit` hook, so interpreter shutdown kills it mid-queue rather
+  than waiting. A CLI, a cron job, a serverless handler or a test run can therefore finish
+  with its last trace - or every trace - never sent. One `tracer.flush()` at the entry point
+  is the whole fix; see the brief's Phase 2.
 
-Both look identical from the outside: an agent that runs fine and a dashboard that stays empty.
+All three look identical from the outside: an agent that runs fine and a dashboard that stays empty.
 `verify_trace.py` exists to close that loop before anyone believes the wiring - it sends one
 synchronous trace and then fetches it back by id.
 

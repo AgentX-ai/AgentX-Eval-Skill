@@ -31,6 +31,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import List, Optional
 
 
 def load_env_file(path: Path) -> dict:
@@ -65,6 +66,74 @@ def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:
             return json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
+
+
+def find_bootstrap(root: Path) -> Optional[Path]:
+    """Locate the repo's copy of agentx_tracing.py, if it has been placed yet."""
+    skip = {".venv", "venv", ".git", "node_modules", "__pycache__", ".tox", "site-packages"}
+    for path in sorted(root.rglob("agentx_tracing.py")):
+        if not any(part in skip for part in path.parts):
+            return path
+    return None
+
+
+def check_bootstrap_parity(path: Path, real_tracer, real_span) -> List[str]:
+    """Does the bootstrap's no-op fallback still match the real tracer's surface?
+
+    The whole point of that fallback is that code written against the real tracer keeps
+    working when no key is set. Every name the SDK gains and the shim does not is an
+    AttributeError waiting inside somebody's agent in exactly the configuration - a
+    teammate's first checkout, CI - the fallback exists to protect.
+
+    `current_span` is called out separately because it is the one that fails *without* an
+    AttributeError: it is a property on the real Tracer, and a shim that defines it as a
+    method returns a truthy bound method instead of None. The LangChain integration reads
+    `tracer.current_span` and branches on `is not None`, so a method here sends it down the
+    "inside a span" branch to call `_merge_child_run` on a method object.
+
+    Parsed rather than imported: importing the bootstrap constructs a client, and
+    --capabilities promises to touch no network.
+    """
+    import ast
+
+    try:
+        tree = ast.parse(path.read_text())
+    except (OSError, SyntaxError) as exc:
+        return [f"could not parse {path}: {exc}"]
+
+    classes = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)}
+    problems: List[str] = []
+
+    for shim_name, real in (("_NoopTracer", real_tracer), ("_NoopSpan", real_span)):
+        node = classes.get(shim_name)
+        if node is None:
+            problems.append(f"{path.name} defines no {shim_name}; cannot check parity")
+            continue
+
+        defined = {
+            b.target.id if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name) else
+            getattr(b, "name", None)
+            for b in node.body
+        } | {
+            t.id for b in node.body if isinstance(b, ast.Assign)
+            for t in b.targets if isinstance(t, ast.Name)
+        }
+        missing = sorted(n for n in dir(real) if not n.startswith("_") and n not in defined)
+        if missing:
+            problems.append(f"{shim_name} is missing: {', '.join(missing)}")
+
+        for b in node.body:
+            if isinstance(b, ast.FunctionDef) and b.name == "current_span":
+                is_property = any(
+                    isinstance(d, ast.Name) and d.id == "property" for d in b.decorator_list
+                )
+                if not is_property and isinstance(getattr(real, "current_span", None), property):
+                    problems.append(
+                        f"{shim_name}.current_span is a method; the real Tracer's is a property, "
+                        "so this returns a truthy bound method instead of None"
+                    )
+
+    return problems
 
 
 def report_capabilities() -> int:
@@ -110,6 +179,29 @@ def report_capabilities() -> int:
     if not caps["add_tool_call(success=)"]:
         print("\n  This version's add_tool_call() takes no success=/error=. Use "
               "tracer.trace_tool_call(...) to record a failed tool call.", file=sys.stderr)
+
+    # The other half of the same question: the SDK moves, and the bootstrap's no-op fallback
+    # has to move with it or it stops being a fallback.
+    bootstrap = find_bootstrap(Path.cwd())
+    if bootstrap is None:
+        print("\n  bootstrap: no agentx_tracing.py in this tree yet - Phase 1c copies it in.",
+              file=sys.stderr)
+        caps["bootstrap"] = None
+    else:
+        problems = check_bootstrap_parity(bootstrap, Tracer, _TraceSpan)
+        caps["bootstrap"] = {"path": str(bootstrap), "problems": problems}
+        if problems:
+            print(f"\n  bootstrap {bootstrap}: the no-op fallback has drifted from this SDK",
+                  file=sys.stderr)
+            for problem in problems:
+                print(f"    - {problem}", file=sys.stderr)
+            print("    Code that works with a key set will raise without one - which is the "
+                  "only case the fallback exists for. Re-copy <skill>/assets/agentx_tracing.py.",
+                  file=sys.stderr)
+        else:
+            print(f"\n  bootstrap {bootstrap}: no-op fallback matches this SDK's surface",
+                  file=sys.stderr)
+
     print(json.dumps(caps, indent=2))
     return 0
 
