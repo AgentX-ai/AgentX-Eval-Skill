@@ -27,7 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 AUDIT = "tests/audit_skills.py"
 
-INIT = "plugins/agentx/skills/agentx-init"
+INSTRUMENT = "plugins/agentx/skills/instrument"
 EVAL = "plugins/agentx/skills/eval-fix"
 
 try:
@@ -58,33 +58,33 @@ def case(name: str, expect: str, needs_sdk: bool = False):
 # -- the three that shipped -------------------------------------------------------------
 @case("exec bit stripped", "not executable")
 def _(root):  # the original exit 126
-    os.chmod(root / INIT / "scripts/detect_stack.py", 0o644)
+    os.chmod(root / INSTRUMENT / "scripts/detect_stack.py", 0o644)
 
 @case("probe under bare python3", "use <project-interpreter>")
 def _(root):  # the original exit 4
-    edit(root, f"{INIT}/references/instrumentation-brief.md",
+    edit(root, f"{INSTRUMENT}/references/instrumentation-brief.md",
          "<project-interpreter> <skill>/scripts/verify_trace.py --capabilities",
          "python3 <skill>/scripts/verify_trace.py --capabilities")
 
 @case("guessed import path", "agentx.tracing has no _TraceSpan", needs_sdk=True)
 def _(root):  # the original ImportError, staged where an agent would copy it
-    edit(root, f"{INIT}/SKILL.md", "```bash\npython3 <skill>/scripts/detect_stack.py .\n```",
+    edit(root, f"{INSTRUMENT}/SKILL.md", "```bash\npython3 <skill>/scripts/detect_stack.py .\n```",
          "```python\nfrom agentx.tracing import _TraceSpan\n```")
 
 # -- scripts ----------------------------------------------------------------------------
 @case("shebang removed", "no shebang")
 def _(root):
-    p = root / INIT / "scripts/agentx_key.py"
+    p = root / INSTRUMENT / "scripts/agentx_key.py"
     p.write_text(p.read_text().split("\n", 1)[1])
 
 @case("python syntax error", "does not parse")
 def _(root):
-    p = root / INIT / "scripts/verify_trace.py"
+    p = root / INSTRUMENT / "scripts/verify_trace.py"
     p.write_text(p.read_text() + "\ndef broken(:\n")
 
 @case("script that cannot start", "`--help` exits")
 def _(root):  # parses, has the exec bit, dies on import
-    p = root / INIT / "scripts/detect_stack.py"
+    p = root / INSTRUMENT / "scripts/detect_stack.py"
     lines = p.read_text().splitlines()
     lines.insert(1, "import module_that_does_not_exist_xyz")
     p.write_text("\n".join(lines))
@@ -97,22 +97,22 @@ def _(root):
 # -- documented commands ----------------------------------------------------------------
 @case("flag that does not exist", "has no --nonexistent-flag")
 def _(root):
-    edit(root, f"{INIT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
+    edit(root, f"{INSTRUMENT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
          "python3 <skill>/scripts/detect_stack.py . --nonexistent-flag")
 
 @case("no interpreter named", "names no interpreter")
 def _(root):
-    edit(root, f"{INIT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
+    edit(root, f"{INSTRUMENT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
          "<skill>/scripts/detect_stack.py .")
 
 @case("project interpreter where python3 does", "python3 is enough")
 def _(root):
-    edit(root, f"{INIT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
+    edit(root, f"{INSTRUMENT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
          "<project-interpreter> <skill>/scripts/detect_stack.py .")
 
 @case("script that does not exist", "does not exist")
 def _(root):
-    edit(root, f"{INIT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
+    edit(root, f"{INSTRUMENT}/SKILL.md", "python3 <skill>/scripts/detect_stack.py .",
          "python3 <skill>/scripts/detect_stak.py .")
 
 @case("stale flag in a README", "has no --capabilitees")
@@ -123,17 +123,17 @@ def _(root):
 # -- the SDK contract -------------------------------------------------------------------
 @case("integration class that is not in the SDK", "AgentXImaginaryHandler", needs_sdk=True)
 def _(root):
-    edit(root, f"{INIT}/references/instrumentation-brief.md", "AgentXCallbackHandler(tracer)",
+    edit(root, f"{INSTRUMENT}/references/instrumentation-brief.md", "AgentXCallbackHandler(tracer)",
          "AgentXImaginaryHandler(tracer)")
 
 @case("tracer method that does not exist", ".record_everything(), which is on neither", needs_sdk=True)
 def _(root):
-    edit(root, f"{INIT}/references/instrumentation-brief.md", "tracer.flush()",
+    edit(root, f"{INSTRUMENT}/references/instrumentation-brief.md", "tracer.flush()",
          "tracer.record_everything()")
 
 @case("trace() keyword not in the signature", "not a parameter", needs_sdk=True)
 def _(root):
-    edit(root, f"{INIT}/references/instrumentation-brief.md",
+    edit(root, f"{INSTRUMENT}/references/instrumentation-brief.md",
          'tracer.trace("support-agent", framework="langchain", model="gpt-4o")',
          'tracer.trace("support-agent", grouping="langchain", model="gpt-4o")')
 

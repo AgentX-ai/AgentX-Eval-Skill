@@ -229,7 +229,7 @@ def report_capabilities() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--env", default=".env.agentx", help="env file to load first (default: .env.agentx)")
-    ap.add_argument("--name", default="agentx-init-check", help="name prefix for --self-test traces")
+    ap.add_argument("--name", default="instrument-check", help="name prefix for --self-test traces")
     ap.add_argument("--check", metavar="AGENT",
                     help="grade the traces this agent already produced instead of sending any")
     ap.add_argument("--limit", type=int, default=25,

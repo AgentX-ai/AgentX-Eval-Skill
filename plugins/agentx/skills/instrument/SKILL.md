@@ -1,5 +1,5 @@
 ---
-name: agentx-init
+name: instrument
 description: >-
   Set an existing Python agent up on AgentX, end to end: read the project API key off the
   engine, write .env.agentx, install agentx-python from PyPI, initialise the SDK once,
@@ -165,7 +165,7 @@ python3 <skill>/scripts/agentx_key.py --json   # engine verdict, verified key, p
 <project-interpreter> <skill>/scripts/verify_trace.py --capabilities   # what the INSTALLED sdk supports
 ```
 
-`<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/agentx-init` under the
+`<skill>` is this skill's own directory - `${CLAUDE_PLUGIN_ROOT}/skills/instrument` under the
 plugin, or wherever `npx skills add` unpacked it. Resolve it once and reuse it.
 
 ---

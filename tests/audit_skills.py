@@ -43,7 +43,7 @@ from collections import Counter
 stats: Counter = Counter()
 
 FLOORS = {
-    "scripts": 4,            # 3 in agentx-init + fetch_analysis.py
+    "scripts": 4,            # 3 in instrument + fetch_analysis.py
     "commands": 15,          # documented invocations across the skills
     "flags": 10,             # --flags validated inside those commands
     "fenced imports": 2,     # from agentx ... import ... in fenced blocks
