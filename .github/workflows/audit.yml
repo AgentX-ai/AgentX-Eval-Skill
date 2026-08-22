@@ -18,6 +18,7 @@ jobs:
     # No SDK, no network: does the repo agree with itself, on the oldest Python the README
     # promises and on the newest one anybody runs?
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -28,10 +29,14 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python3 tests/audit_skills.py --skip-sdk
+      # The audit is a smoke detector; this proves the detector itself, by breaking a copy
+      # of the repo 16 ways (20 with the SDK) and requiring each break to be caught by name.
+      - run: python3 tests/test_audit_fires.py
 
   sdk:
     # Does the repo still agree with the package the skills generate code against?
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -39,3 +44,4 @@ jobs:
           python-version: "3.12"
       - run: pip install "agentx-python[langchain]"
       - run: python3 tests/audit_skills.py
+      - run: python3 tests/test_audit_fires.py

@@ -36,6 +36,22 @@ SKILLS = ROOT / "plugins/agentx/skills"
 problems: list[str] = []
 notes: list[str] = []
 
+# Every sweep counts what it saw. A broken glob otherwise turns the audit into a
+# green light wired to nothing - it would "pass" a repo whose skills directory had
+# been renamed, checking zero commands against zero scripts.
+from collections import Counter
+stats: Counter = Counter()
+
+FLOORS = {
+    "scripts": 4,            # 3 in agentx-init + fetch_analysis.py
+    "commands": 15,          # documented invocations across the skills
+    "flags": 10,             # --flags validated inside those commands
+    "fenced imports": 2,     # from agentx ... import ... in fenced blocks
+    "sdk symbols": 8,        # integration classes and patch functions named
+    "manifests": 3,          # marketplace.json files reached
+    "skill frontmatter": 2,  # SKILL.md files with name/description checked
+}
+
 
 def fail(where: str, msg: str) -> None:
     problems.append(f"{where}: {msg}")
@@ -50,6 +66,7 @@ def script_files() -> list[Path]:
 
 def check_scripts() -> None:
     for path in script_files():
+        stats["scripts"] += 1
         rel = path.relative_to(ROOT)
         first = path.read_text().splitlines()[0] if path.read_text() else ""
         if not first.startswith("#!"):
@@ -63,6 +80,11 @@ def check_scripts() -> None:
                 ast.parse(path.read_text())
             except SyntaxError as exc:
                 fail(str(rel), f"does not parse: {exc}")
+        elif path.suffix == ".sh":
+            import subprocess
+            proc = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+            if proc.returncode != 0:
+                fail(str(rel), f"bash -n: {proc.stderr.strip()[:90]}")
 
 
 def check_scripts_run() -> None:
@@ -86,9 +108,17 @@ def check_scripts_run() -> None:
 
 
 def argparse_flags(path: Path) -> set[str]:
-    """Every --flag the script accepts, read out of its add_argument calls."""
+    """Every --flag the script accepts, read out of its add_argument calls.
+
+    A file that does not parse yields no flags rather than an exception - check_scripts
+    has already reported the syntax error, and the auditor crashing on a broken input is
+    the auditor failing at its one job."""
     flags: set[str] = set()
-    for node in ast.walk(ast.parse(path.read_text())):
+    try:
+        tree = ast.parse(path.read_text())
+    except SyntaxError:
+        return flags
+    for node in ast.walk(tree):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "add_argument"):
             for arg in node.args:
@@ -117,6 +147,23 @@ def bash_lines(text: str) -> list[str]:
     return out
 
 
+def check_readme_flags() -> None:
+    """READMEs mention the scripts too, in a looser register - `.venv/bin/python
+    verify_trace.py --capabilities`. They are not held to the skills' invocation contract,
+    but a flag they name still has to exist."""
+    known = {p.name: argparse_flags(p) for p in script_files() if p.suffix == ".py"}
+    for md in [ROOT / "README.md", *ROOT.glob("plugins/*/README.md")]:
+        if not md.is_file():
+            continue
+        for line in bash_lines(md.read_text()):
+            for script in known:
+                if script in line:
+                    for flag in re.findall(r"(?<![\w-])--[a-z][a-z-]+", line):
+                        if flag not in known[script]:
+                            fail(str(md.relative_to(ROOT)),
+                                 f"{script} has no {flag} -> `{line[:60]}`")
+
+
 def check_commands() -> None:
     known = {p.name: argparse_flags(p) for p in script_files() if p.suffix == ".py"}
     for md in sorted(SKILLS.rglob("*.md")):
@@ -126,6 +173,7 @@ def check_commands() -> None:
             if not match:
                 continue
             script, interp = match.group(1), line.split()[0]
+            stats["commands"] += 1
 
             if script not in {p.name for p in script_files()}:
                 fail(str(rel), f"invokes scripts/{script}, which does not exist")
@@ -146,6 +194,7 @@ def check_commands() -> None:
                 fail(str(rel), f"{script} is stdlib-only; python3 is enough -> `{line[:60]}`")
 
             for flag in re.findall(r"(?<![\w-])--[a-z][a-z-]+", line):
+                stats["flags"] += 1
                 if flag not in known.get(script, set()):
                     fail(str(rel), f"{script} has no {flag} -> `{line[:60]}`")
 
@@ -171,6 +220,9 @@ def check_sdk() -> None:
 
     notes.append(f"SDK checks ran against agentx-python {VERSION}")
     docs = {md: md.read_text() for md in sorted(SKILLS.rglob("*.md"))}
+    for md in [ROOT / "README.md", *sorted(ROOT.glob("plugins/*/README.md"))]:
+        if md.is_file():
+            docs[md] = md.read_text()
 
     # 3a. imports in fenced blocks must resolve
     for md, text in docs.items():
@@ -181,6 +233,7 @@ def check_sdk() -> None:
                 fail(str(md.relative_to(ROOT)), f"`from {module} import ...` fails: {exc}")
                 continue
             for name in (n.strip() for n in names.split(",")):
+                stats["fenced imports"] += 1
                 if not hasattr(mod, name):
                     fail(str(md.relative_to(ROOT)), f"{module} has no {name}")
 
@@ -189,6 +242,7 @@ def check_sdk() -> None:
     sources = {p.name: p.read_text() for p in integrations.glob("*.py")}
     everything = "\n".join(docs.values())
     for symbol in sorted(set(re.findall(r"\b(AgentX[A-Z]\w+|patch_\w+_client)\b", everything))):
+        stats["sdk symbols"] += 1
         if hasattr(importlib.import_module("agentx"), symbol):
             continue  # exceptions and top-level exports, e.g. AgentXAuthError
         if not any(re.search(rf"^(class|def) {symbol}\b", src, re.M) for src in sources.values()):
@@ -219,18 +273,39 @@ def check_manifests() -> None:
     if len(set(versions.values())) > 1:
         fail("plugins/agentx", f"the ecosystems disagree on the version: {versions}")
 
-    for marketplace in sorted(ROOT.glob(".*/marketplace.json")):
+    # .claude-plugin and .cursor-plugin keep marketplace.json one level down;
+    # .agents keeps it under plugins/, and writes `source` as a dict, not a string.
+    manifests = sorted(set(ROOT.glob(".*/marketplace.json")) | set(ROOT.glob(".*/plugins/marketplace.json")))
+    if not manifests:
+        fail("repo", "no marketplace.json found anywhere")
+    for marketplace in manifests:
+        stats["manifests"] += 1
+        rel = str(marketplace.relative_to(ROOT))
         try:
             data = json.loads(marketplace.read_text())
         except json.JSONDecodeError as exc:
-            fail(str(marketplace.relative_to(ROOT)), f"invalid JSON: {exc}")
+            fail(rel, f"invalid JSON: {exc}")
             continue
         for plugin in data.get("plugins", []):
-            source = (ROOT / plugin["source"]).resolve()
+            raw = plugin.get("source")
+            path = raw.get("path") if isinstance(raw, dict) else raw
+            if not path:
+                fail(rel, f"plugin {plugin.get('name')} has no source path")
+                continue
+            source = (ROOT / path).resolve()
             if not source.is_dir():
-                fail(str(marketplace.relative_to(ROOT)), f"source {plugin['source']} does not exist")
+                fail(rel, f"source {path} does not exist")
+                continue
+            # The marketplace name is what `claude plugin install <name>@...` resolves; the
+            # plugin.json name is what lands on disk. A rename that touches one but not the
+            # other strands every existing install.
+            declared = {json.loads(m.read_text()).get("name")
+                        for m in source.glob(".*-plugin/plugin.json")}
+            if declared and plugin.get("name") not in declared:
+                fail(rel, f"lists plugin '{plugin.get('name')}' but {path} declares {sorted(declared)}")
 
     for skill in sorted(SKILLS.glob("*/SKILL.md")):
+        stats["skill frontmatter"] += 1
         head = skill.read_text()[:2000]
         if not head.startswith("---"):
             fail(str(skill.relative_to(ROOT)), "no YAML frontmatter")
@@ -250,21 +325,30 @@ def main() -> int:
     check_scripts()
     check_scripts_run()
     check_commands()
+    check_readme_flags()
     check_manifests()
     if args.skip_sdk:
         notes.append("SDK checks skipped (--skip-sdk)")
     else:
         check_sdk()
 
+    sdk_floors = {"fenced imports", "sdk symbols"}
+    for what, floor in FLOORS.items():
+        if args.skip_sdk and what in sdk_floors:
+            continue
+        if stats[what] < floor:
+            fail("audit", f"swept only {stats[what]} {what} (floor {floor}) - "
+                          "a glob or regex is no longer finding what it should")
+
     for note in notes:
         print(f"  note: {note}")
+    print("  swept: " + ", ".join(f"{v} {k}" for k, v in sorted(stats.items())))
     if problems:
         print(f"\n{len(problems)} problem(s):\n", file=sys.stderr)
         for problem in problems:
             print(f"  ✗ {problem}", file=sys.stderr)
         return 1
-    print(f"\n  {len(script_files())} scripts, "
-          f"{len(list(SKILLS.rglob('*.md')))} documents - all consistent")
+    print("\n  all consistent")
     return 0
 
 
