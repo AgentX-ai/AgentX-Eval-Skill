@@ -1,7 +1,7 @@
 {
   "name": "agentx",
-  "version": "2.7.0",
-  "description": "Get your agent's real runs into AgentX, then turn what they measure into a code fix. /instrument sets up a Python agent and proves it with traces it reads back; /eval-fix triages an evaluation against the source and re-runs it on the same dataset.",
+  "version": "2.8.0",
+  "description": "Get your agent's real runs into AgentX, then score them, then turn what they measure into a code fix. /instrument sets up a Python agent and proves it with traces it reads back; /run-eval evaluates it against a dataset it can also create - templates, files, or cases curated from live traces; /eval-fix triages the evaluation against the source and re-runs it on the same dataset.",
   "author": {
     "name": "AgentX",
     "email": "marcin@agentx.so",
@@ -21,13 +21,14 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AgentX",
-    "shortDescription": "Set a Python agent up on AgentX, then fix it from its evaluation",
-    "longDescription": "Two skills that share one loop. /instrument sets a Python agent up on AgentX - it reads the project key off the engine, writes .env.agentx, initialises the SDK, and puts one span where the run begins rather than a decorator on every function. It does not stop at the diff: it sends three traces and fetches each back, then grades the agent's own run for readable input and output, token counts, tool calls and session grouping, because trace delivery is fire-and-forget and a misconfigured SDK never raises. /eval-fix takes an evaluation id, triages every judge recommendation against the real source, applies what survives on a branch, and re-runs against the same dataset so the two scores mean something next to each other.",
+    "shortDescription": "Set a Python agent up on AgentX, evaluate it, then fix it from the evaluation",
+    "longDescription": "Three skills that share one loop. /instrument sets a Python agent up on AgentX - it reads the project key off the engine, writes .env.agentx, initialises the SDK, and puts one span where the run begins, then proves the wiring by fetching the agent's own traces back. /run-eval scores that agent: it picks or creates the dataset and grading config (shipped templates, a CSV or document, or cases the engine drafts from the agent's own live traces), writes a committed harness that calls the agent once per case with a linked trace, runs it, and hands back the score, the browser report, and the /eval-fix command. /eval-fix takes that evaluation id, triages every judge recommendation against the real source, applies what survives on a branch, and re-runs the same harness so the two scores mean something next to each other.",
     "developerName": "AgentX",
     "category": "Developer Tools",
     "websiteURL": "https://agentx.so",
     "defaultPrompt": [
       "Use AgentX to set up tracing for this agent.",
+      "Use AgentX to evaluate this agent.",
       "Use AgentX to triage evaluation <id> and fix the code."
     ]
   }

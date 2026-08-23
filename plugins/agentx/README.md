@@ -7,6 +7,7 @@ code fix.
 | Skill | What it does |
 |---|---|
 | `/instrument` | Sets a Python agent up on AgentX — key, SDK, one span where the run begins, then traces sent and read back to prove it. Documented below. |
+| `/run-eval` | Evaluates that agent: picks or creates the dataset and grading config, writes the committed harness, runs it, links every result to its trace, and hands over the score, the browser report, and the `/eval-fix` command. |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
 
 They are one plugin because they are one story, and the seam between them is the reason to
@@ -22,6 +23,7 @@ verification pass that does not take the diff's word for it.
 
 ```
 /instrument ─► survey the repo ─► key into .env.agentx ─► one span at the entry point
+/run-eval   ─► dataset + judge picked or created ─► committed harness ─► scored, analyzed, trace-linked run
                                                                           │
    grade the agent's own run ◄── 3 traces, fetched back ◄── auto-instrument the model client
 ```
@@ -150,6 +152,11 @@ rather than resting on a review.
 | `skills/instrument/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, via `ast` |
 | `skills/instrument/scripts/agentx_key.py` | Verified key resolution, project selection, `.env.agentx` |
 | `skills/instrument/scripts/verify_trace.py` | Connection proven without writing anything, `--check` to grade the agent's own runs, `--capabilities` |
+| `skills/run-eval/SKILL.md` | Id resolution, the two pickers, and what the skill refuses to do |
+| `skills/run-eval/references/run-brief.md` | Seven phases: orient, validate, harness, preflight, run, verify, hand off |
+| `skills/run-eval/scripts/pick_eval.py` | Datasets + grading configs listed and ids validated against this engine |
+| `skills/run-eval/scripts/make_dataset.py` | Datasets created four ways — templates, JSON, CSV, or curated from live traces — idempotent by name |
+| `skills/run-eval/templates/` | Three starter datasets, shape-checked in CI so field drift fails before a user hits it |
 
 ## Why `--capabilities` exists
 

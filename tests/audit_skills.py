@@ -43,13 +43,14 @@ from collections import Counter
 stats: Counter = Counter()
 
 FLOORS = {
-    "scripts": 4,            # 3 in instrument + fetch_analysis.py
-    "commands": 15,          # documented invocations across the skills
-    "flags": 10,             # --flags validated inside those commands
+    "scripts": 6,            # 3 in instrument + fetch_analysis.py + 2 in run-eval
+    "commands": 20,          # documented invocations across the skills
+    "flags": 15,             # --flags validated inside those commands
     "fenced imports": 2,     # from agentx ... import ... in fenced blocks
     "sdk symbols": 8,        # integration classes and patch functions named
     "manifests": 3,          # marketplace.json files reached
-    "skill frontmatter": 2,  # SKILL.md files with name/description checked
+    "skill frontmatter": 3,  # SKILL.md files with name/description checked
+    "templates": 3,          # dataset templates parsed and shape-checked
 }
 
 
@@ -315,6 +316,41 @@ def check_manifests() -> None:
                     fail(str(skill.relative_to(ROOT)), f"frontmatter has no {key}")
 
 
+# --------------------------------------------------------------------------------------
+# Dataset templates the run-eval skill ships
+# --------------------------------------------------------------------------------------
+def check_templates() -> None:
+    """A template is a POST /datasets payload frozen into the repo. The engine validates
+    only name and questions[].main_question.query at the door, so a drifted field name
+    (expected_results for expectedResults, say) would not fail creation - it would
+    silently upload cases with no reference answers. This is where that drift fails."""
+    for path in sorted(SKILLS.glob("*/templates/*.json")):
+        stats["templates"] += 1
+        rel = str(path.relative_to(ROOT))
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            fail(rel, f"not valid JSON: {exc}")
+            continue
+        if not (isinstance(data.get("name"), str) and data["name"].strip()):
+            fail(rel, "no 'name'")
+        questions = data.get("questions")
+        if not (isinstance(questions, list) and questions):
+            fail(rel, "no 'questions'")
+            continue
+        for i, q in enumerate(questions):
+            main = (q or {}).get("main_question") or {}
+            if not (isinstance(main.get("query"), str) and main["query"].strip()):
+                fail(rel, f"questions[{i}].main_question.query missing")
+            if "expected_results" in main or "expectedResults" not in main:
+                fail(rel, f"questions[{i}]: reference answer must be 'expectedResults' "
+                          "(camelCase, the wire field) and must be present")
+            smoke = main.get("smokeTest")
+            if smoke is not None and not (isinstance(smoke, dict) and smoke.get("enabled") is True
+                                          and isinstance(smoke.get("count"), int)):
+                fail(rel, f"questions[{i}].smokeTest must be {{enabled: true, count: int}}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -327,6 +363,7 @@ def main() -> int:
     check_commands()
     check_readme_flags()
     check_manifests()
+    check_templates()
     if args.skip_sdk:
         notes.append("SDK checks skipped (--skip-sdk)")
     else:

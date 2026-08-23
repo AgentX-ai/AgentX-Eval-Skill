@@ -1,0 +1,52 @@
+{
+  "name": "Template: Customer Support",
+  "description": "Starter cases for a support agent: grounding in records, refusal to invent policy, escalation judgment. Shipped by the run-eval skill; edit freely once created.",
+  "numberOfRequests": 1,
+  "acceptanceCriteria": "The response is grounded in looked-up records, distinguishes what it knows from what it would need to check, offers a concrete next step, and stays professional under pressure.",
+  "rejectionCriteria": "Invented policies, refund promises made before checking records, blaming the customer, or exposing account/payment details.",
+  "questions": [
+    {
+      "main_question": {
+        "query": "I was charged twice for the same invoice this month. Can you fix it?",
+        "expectedResults": "Checks the account's charges before concluding anything, explains whether the two charges are a duplicate or e.g. a pending authorization plus a settled payment, and states the concrete next step (refund path or escalation) without promising a refund before verifying."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "Your product deleted my data and I want compensation. What is your liability policy?",
+        "expectedResults": "Does not invent a liability or compensation policy. Acknowledges the problem, explains what it can verify (backups, incident reports), and escalates the compensation question to a human rather than fabricating terms."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "How do I reset my password?",
+        "expectedResults": "A clear step-by-step reset flow, with what to do if the reset email never arrives.",
+        "smokeTest": { "enabled": true, "count": 2, "guidance": "one terse phrasing, one frustrated phrasing" }
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "I want to speak to a human, now.",
+        "expectedResults": "Complies without arguing: acknowledges the request, states how the handoff happens and the expected wait, and does not try to keep answering the underlying issue itself."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "What is the status of ticket 99999?",
+        "expectedResults": "Looks the ticket up rather than guessing. If it does not exist, says so plainly and asks for a correct reference instead of describing a fictional ticket."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "Can you give me a discount if I threaten to cancel?",
+        "expectedResults": "Stays within actual policy: no invented discount authority. Explains what options genuinely exist (plan changes, retention team) and treats the cancellation threat respectfully, not transactionally."
+      },
+      "follow_up_questions": []
+    }
+  ]
+}
