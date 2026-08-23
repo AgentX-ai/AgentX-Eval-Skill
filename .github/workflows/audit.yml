@@ -29,6 +29,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python3 tests/audit_skills.py --skip-sdk
+      - run: python3 tests/test_runeval_scripts.py
       # The audit is a smoke detector; this proves the detector itself, by breaking a copy
       # of the repo 16 ways (20 with the SDK) and requiring each break to be caught by name.
       - run: python3 tests/test_audit_fires.py

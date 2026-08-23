@@ -31,6 +31,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -81,7 +82,16 @@ def call(base: str, key: str, method: str, path: str, payload: dict | None = Non
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            try:
+                return resp.status, json.loads(raw)
+            except ValueError:
+                die(
+                    f"{base + path} answered with something that is not JSON. "
+                    f"If the base URL lacks /api/v1, the dashboard SPA answers instead of the API - "
+                    f"AGENTX_API_BASE_URL should end in /api/v1.",
+                    2,
+                )
     except urllib.error.HTTPError as e:
         try:
             body = json.loads(e.read().decode("utf-8"))
@@ -159,7 +169,9 @@ def payload_from_csv(path: str, args: argparse.Namespace) -> dict:
     if not p.exists():
         die(f"no such file: {path}")
     questions = []
-    with p.open(newline="", encoding="utf-8") as f:
+    # utf-8-sig: Excel exports open with a BOM, which otherwise renames the first
+    # column to '\ufeffquery' and fails the required-column check confusingly.
+    with p.open(newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         cols = set(reader.fieldnames or [])
         if "query" not in cols:
@@ -216,6 +228,18 @@ def main() -> None:
     ap.add_argument("--session-id", help="provenance for --add-case")
     args = ap.parse_args()
 
+    for flag, value in (
+        ("--template", args.template),
+        ("--from-json", args.from_json),
+        ("--from-csv", args.from_csv),
+        ("--preview-trace", args.preview_trace),
+        ("--preview-session", args.preview_session),
+        ("--add-case", args.add_case),
+        ("--create-settings", args.create_settings),
+    ):
+        if value is not None and not value.strip():
+            die(f"{flag} got an empty value - a broken variable expansion looks exactly like this")
+
     if args.list_templates:
         for f in sorted(TEMPLATES_DIR.glob("*.json")):
             meta = json.loads(f.read_text(encoding="utf-8"))
@@ -225,11 +249,17 @@ def main() -> None:
     key, base = resolve_auth(args.env_file)
 
     if args.template:
+        if "/" in args.template or "\\" in args.template or ".." in args.template:
+            die(f"template names are bare names, not paths. Shipped: "
+                + ", ".join(sorted(p.stem for p in TEMPLATES_DIR.glob("*.json"))))
         path = TEMPLATES_DIR / f"{args.template}.json"
         if not path.exists():
             names = ", ".join(sorted(p.stem for p in TEMPLATES_DIR.glob("*.json")))
             die(f"no template '{args.template}'. Shipped: {names}")
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            die(f"template {path.name} is not valid JSON: {exc}")
         if args.name:
             payload["name"] = args.name
         create(base, key, payload, args.dry_run, args.json)
@@ -239,7 +269,13 @@ def main() -> None:
         p = Path(args.from_json)
         if not p.exists():
             die(f"no such file: {args.from_json}")
-        payload = json.loads(p.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(p.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            die(f"{args.from_json} is not valid JSON: {exc}")
+        if not isinstance(payload, dict):
+            die(f"{args.from_json} must be a JSON OBJECT shaped like the POST body "
+                f"(name, questions, ...), not a {type(payload).__name__}")
         if args.name:
             payload["name"] = args.name
         create(base, key, payload, args.dry_run, args.json)
@@ -322,9 +358,13 @@ def main() -> None:
         print("appending a case - dataset rows are permanent.", file=sys.stderr)
         status, out = call(
             base, key, "POST",
-            f"/custom-agent-evaluations/datasets/{args.add_case}/cases",
+            f"/custom-agent-evaluations/datasets/{urllib.parse.quote(args.add_case.strip(), safe='')}/cases",
             {"case": case, "dedupe": True},
         )
+        if status == 409:
+            # Dedupe refusing a repeat is the three-step contract working, not a failure.
+            print(f"duplicate: this case is already in {args.add_case} - nothing written.")
+            return
         if status not in (200, 201):
             die(f"add-case returned {status}: {out.get('error', out)}", 3)
         print(json.dumps(out, indent=2))

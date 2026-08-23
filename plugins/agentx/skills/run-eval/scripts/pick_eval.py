@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE = "http://localhost:4700/api/v1"
@@ -72,7 +73,16 @@ def get(base: str, key: str, path: str):
     req = urllib.request.Request(base + path, headers={"x-api-key": key})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
+            try:
+                return resp.status, json.loads(raw)
+            except ValueError:
+                die(
+                    f"{base + path} answered with something that is not JSON. "
+                    f"If the base URL lacks /api/v1, the dashboard SPA answers instead of the API - "
+                    f"AGENTX_API_BASE_URL should end in /api/v1.",
+                    2,
+                )
     except urllib.error.HTTPError as e:
         try:
             body = json.loads(e.read().decode("utf-8"))
@@ -115,11 +125,18 @@ def main() -> None:
 
     key, base = resolve_auth(args.env_file)
 
-    if args.validate_dataset or args.validate_settings:
-        kind, ident, path = (
-            ("dataset", args.validate_dataset, f"/custom-agent-evaluations/datasets/{args.validate_dataset}")
-            if args.validate_dataset
-            else ("settings", args.validate_settings, f"/custom-agent-evaluations/evaluation-settings/{args.validate_settings}")
+    if args.validate_dataset is not None or args.validate_settings is not None:
+        kind = "dataset" if args.validate_dataset is not None else "settings"
+        ident = (args.validate_dataset if kind == "dataset" else args.validate_settings).strip()
+        if not ident:
+            # An empty id is how a broken variable expansion looks - refusing it loudly
+            # beats silently listing everything as if the flag were never passed.
+            die(f"--validate-{kind if kind == 'dataset' else 'settings'} got an empty id")
+        quoted = urllib.parse.quote(ident, safe="")
+        path = (
+            f"/custom-agent-evaluations/datasets/{quoted}"
+            if kind == "dataset"
+            else f"/custom-agent-evaluations/evaluation-settings/{quoted}"
         )
         status, body = get(base, key, path)
         if status == 200:
