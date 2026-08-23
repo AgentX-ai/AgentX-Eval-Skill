@@ -77,6 +77,7 @@ The shape, adapted to the repo (names from Phase 0):
 """Evaluation harness for <agent>. Written by the run-eval skill; committed so a
 later /eval-fix re-run reproduces v1 exactly."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -90,6 +91,13 @@ DATASET_ID = "<dataset-id>"
 SETTINGS_ID = None                 # or "<settings-id>"
 
 eval_client = AgentX.from_env()    # evaluations client - plain HTTP, no parenting
+
+
+def report_host() -> str:
+    """The dashboard shares the engine's origin: the base URL minus its /api/v1
+    suffix - read at RUNTIME, from the same variable the SDK ships the run through."""
+    base = os.getenv("AGENTX_API_BASE_URL", "http://localhost:4700/api/v1").rstrip("/")
+    return base[: -len("/api/v1")] if base.endswith("/api/v1") else base
 
 
 def adapter(case):
@@ -119,8 +127,7 @@ def main_entry() -> None:
     except Exception as exc:       # the score exists either way
         print(f"analysis not generated here ({exc}) - /eval-fix can request it.")
 
-    host = "<engine-base-url-without-/api/v1>"
-    print(f"report in the browser:  {host}/evaluations/{run.run_id}")
+    print(f"report in the browser:  {report_host()}/evaluations/{run.run_id}")
     print(f"next:                   /agentx:eval-fix {run.run_id}")
 
 
@@ -148,9 +155,16 @@ Five lines of that skeleton carry the whole design - keep all five in the adapta
 
 The browser URL is built by the harness because **self-host runs return no
 `dashboardUrl`** - the SDK field stays `None` here, so a report that relies on it prints
-no link at all. The dashboard serves every run at `<host>/evaluations/<run-id>`; derive
-`<host>` from the base URL in `.env.agentx` by stripping `/api/v1`, never hardcode a
-port the repo's env does not name.
+no link at all. The dashboard serves every run at `<host>/evaluations/<run-id>`, and
+`<host>` is whatever the user's engine is - localhost, another box, or a reverse proxy -
+so `report_host()` derives it **at runtime** from `AGENTX_API_BASE_URL`, the same
+variable the SDK ships the run through. Never resolve it while writing the harness and
+bake in the answer: the committed literal goes stale the moment the engine moves, and
+the link then names a different engine than the one that received the run - including
+during an /eval-fix re-run launched with an `AGENTX_API_BASE_URL=...` override, where
+the runtime link follows the override automatically. (Suffix-strip, do not split on
+`/api/`: a proxy path prefix like `https://example.com/agentx/api/v1` must keep its
+prefix, and `api` may legitimately appear in a hostname.)
 
 ## Phase 3 - Preflight, then get a go-ahead
 
