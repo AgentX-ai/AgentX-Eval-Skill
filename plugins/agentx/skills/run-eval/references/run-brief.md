@@ -131,6 +131,11 @@ if __name__ == "__main__":
         config.tracer.flush()      # daemon delivery thread; a CLI must drain it
 ```
 
+`subject.framework` is a **strict Literal** in the SDK - an off-list value fails pydantic
+validation before any run is created. Valid: `raw_python`, `openai`, `anthropic`, `google`,
+`langchain`, `llamaindex`, `crewai`, `autogen`, `n8n`, `flowise`, `other`. LangGraph is not
+on the list - it runs under `langchain`. When in doubt, `other`.
+
 Five lines of that skeleton carry the whole design - keep all five in the adaptation:
 
 | Line | Why |
