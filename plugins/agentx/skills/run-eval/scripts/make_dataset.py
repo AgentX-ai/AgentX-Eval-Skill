@@ -8,6 +8,7 @@
   make_dataset.py --preview-session <sessionId>          #   ... or a whole session
   make_dataset.py --suggest-expected --query "..."       # draft a reference answer
   make_dataset.py --add-case <datasetId> --query "..." --trace-id <t>   # append a curated case
+  make_dataset.py --create-settings "Strict grading" --acceptance "..."  # a standalone grading config
 
 Every creation writes a PERMANENT row - the v1 API has no dataset DELETE - so creation is
 idempotent by name: if a dataset with the same name already exists in this project, its id is
@@ -128,6 +129,14 @@ def create(base: str, key: str, payload: dict, dry_run: bool, as_json: bool) -> 
             print(f"exists: '{payload['name']}' is already {ident} in this project - reusing it, nothing written.")
         return
 
+    n_followups = sum(len(q.get("follow_up_questions") or []) for q in payload["questions"])
+    if n_followups:
+        print(
+            f"note: {n_followups} follow_up_question(s) in this payload. The SDK's custom-agent "
+            f"execute path asks main questions only - follow-ups are stored and shown in the "
+            f"dashboard but will NOT be asked by a run-eval harness.",
+            file=sys.stderr,
+        )
     print(
         f"creating dataset '{payload['name']}' ({len(payload['questions'])} case(s)) - "
         f"this row is permanent, the API has no dataset DELETE.",
@@ -191,6 +200,7 @@ def main() -> None:
     src.add_argument("--preview-session", metavar="SESSION_ID", help="draft a case from a session")
     src.add_argument("--suggest-expected", action="store_true", help="draft a reference answer for --query")
     src.add_argument("--add-case", metavar="DATASET_ID", help="append an approved case to a dataset")
+    src.add_argument("--create-settings", metavar="NAME", help="create a standalone grading config (idempotent by name)")
     ap.add_argument("--list-templates", action="store_true")
 
     ap.add_argument("--name", help="dataset name (--from-csv, or to override --from-json)")
@@ -257,6 +267,42 @@ def main() -> None:
         if status != 200:
             die(f"suggest-expected returned {status}: {out.get('error', out)}", 3)
         print(json.dumps(out, indent=2))
+        return
+
+    if args.create_settings:
+        name = args.create_settings.strip()
+        status, body = call(base, key, "GET", "/custom-agent-evaluations/evaluation-settings")
+        if status != 200:
+            die(f"evaluation-settings list returned {status} - wrong key or wrong engine at {base}", 2)
+        for row in body.get("evaluationSettings") or []:
+            if (row.get("name") or "").strip() == name:
+                ident = row.get("_id") or row.get("id")
+                if args.json:
+                    print(json.dumps({"id": ident, "name": name, "created": False}))
+                else:
+                    print(f"exists: '{name}' is already {ident} - reusing it, nothing written.")
+                return
+        payload = {"name": name, "status": "published"}
+        if args.description:
+            payload["description"] = args.description
+        if args.number_of_requests:
+            payload["numberOfRequests"] = args.number_of_requests
+        if args.acceptance:
+            payload["acceptanceCriteria"] = args.acceptance
+        if args.rejection:
+            payload["rejectionCriteria"] = args.rejection
+        if args.dry_run:
+            print(json.dumps(payload, indent=2))
+            return
+        print(f"creating grading config '{name}' - this row is permanent.", file=sys.stderr)
+        status, body = call(base, key, "POST", "/custom-agent-evaluations/evaluation-settings", payload)
+        if status not in (200, 201):
+            die(f"create-settings failed with {status}: {body.get('error', body)}", 2)
+        ident = body.get("_id") or body.get("id")
+        if args.json:
+            print(json.dumps({"id": ident, "name": name, "created": True}))
+        else:
+            print(f"created: {ident}  '{name}'")
         return
 
     if args.add_case:

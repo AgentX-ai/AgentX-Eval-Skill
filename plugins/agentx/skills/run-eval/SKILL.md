@@ -91,6 +91,9 @@ Ask with AskUserQuestion, options in this order:
   reference answer, then show the drafted case to the user and only `--add-case` what
   they approve. Real questions the agent actually received - the strongest dataset an
   agent can be graded on.
+- **A dataset with follow-up questions still runs**, but the SDK's execute path asks main
+  questions only - `make_dataset.py` says so at creation time when a payload carries
+  follow-ups, and the run's rated count will reflect main questions, not the follow-ups.
 - **From the user's material** - Q&A pairs typed in chat, or a CSV/XLSX/document. Convert
   whatever is given to `query`/`expected_results`, show the parsed cases for approval,
   then `--from-csv` or `--from-json`. You do the file conversion yourself; only CSV and
@@ -103,8 +106,10 @@ Ask with AskUserQuestion, options in this order:
   differently.
 - **An existing config** - from the same `--json` listing. Every project ships built-in
   judges (Session Baseline, the RAG family), so this list is never empty.
-- **Create a simple one** - recreate the engine's starter "Example: Helpfulness Judge"
-  (seeding is default-project-only, so fresh projects lack it). Same permanence warning.
+- **Create a simple one** - `make_dataset.py --create-settings <name> --acceptance "..."
+  --rejection "..."`, idempotent by name, same permanence warning. For a no-decisions
+  default, recreate the engine's starter "Example: Helpfulness Judge" criteria (seeding
+  is default-project-only, so fresh projects lack it).
 
 When the dataset answer was "create new", this question may be multiSelect: each selected
 config becomes its own run over the same dataset - that is exactly what standalone
@@ -129,6 +134,7 @@ python3 <skill>/scripts/make_dataset.py --from-json <path>
 python3 <skill>/scripts/make_dataset.py --preview-trace <traceId>
 python3 <skill>/scripts/make_dataset.py --suggest-expected --query "..."
 python3 <skill>/scripts/make_dataset.py --add-case <datasetId> --query "..." --trace-id <t>
+python3 <skill>/scripts/make_dataset.py --create-settings <name> --acceptance "..." --rejection "..."
 ```
 
 Both scripts are stdlib-only, read `.env.agentx` themselves (a real environment variable
