@@ -51,6 +51,7 @@ FLOORS = {
     "manifests": 3,          # marketplace.json files reached
     "skill frontmatter": 3,  # SKILL.md files with name/description checked
     "templates": 3,          # dataset templates parsed and shape-checked
+    "brief skeleton": 1,     # run-brief harness skeleton derives the link at runtime
 }
 
 
@@ -351,6 +352,43 @@ def check_templates() -> None:
                 fail(rel, f"questions[{i}].smokeTest must be {{enabled: true, count: int}}")
 
 
+# --------------------------------------------------------------------------------------
+# The run-eval brief's harness skeleton
+# --------------------------------------------------------------------------------------
+def check_brief_skeleton() -> None:
+    """The report link must be derived at RUNTIME from AGENTX_API_BASE_URL. This
+    regressed once already: the skeleton carried a placeholder the generating agent
+    resolved to a literal, so four of five real harnesses shipped with localhost
+    baked in while the run itself followed the env. Structure is checked here; the
+    derivation's behavior is executed against real address shapes in
+    tests/test_runeval_scripts.py."""
+    brief = SKILLS / "run-eval/references/run-brief.md"
+    if not brief.exists():
+        fail("run-eval/references/run-brief.md", "missing")
+        return
+    stats["brief skeleton"] += 1
+    text = brief.read_text()
+    fences = re.findall(r"```python\n(.*?)```", text, flags=re.S)
+    skeleton = next((f for f in fences if "def adapter(case):" in f), "")
+    if not skeleton:
+        fail(str(brief.relative_to(ROOT)), "no fenced python skeleton with adapter()")
+        return
+    if "def report_host()" not in skeleton or "AGENTX_API_BASE_URL" not in skeleton:
+        fail(str(brief.relative_to(ROOT)),
+             "skeleton must derive the report link at runtime via report_host() "
+             "reading AGENTX_API_BASE_URL")
+    if "report_host()" not in skeleton.split("def main_entry")[-1]:
+        fail(str(brief.relative_to(ROOT)), "main_entry must print via report_host()")
+    for bad, why in (
+        ("<engine-base-url", "the resolve-at-generation-time placeholder is the bug"),
+        ('host = "http', "a literal host baked into the skeleton"),
+        ('localhost:4700/evaluations', "a hardcoded report link"),
+        ('.split("/api/")', "suffix-strip, not split - proxy prefixes and api-in-hostname break split"),
+    ):
+        if bad in skeleton:
+            fail(str(brief.relative_to(ROOT)), f"skeleton contains {bad!r} - {why}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -364,6 +402,7 @@ def main() -> int:
     check_readme_flags()
     check_manifests()
     check_templates()
+    check_brief_skeleton()
     if args.skip_sdk:
         notes.append("SDK checks skipped (--skip-sdk)")
     else:

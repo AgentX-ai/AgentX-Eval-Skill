@@ -169,6 +169,18 @@ def _(root):
     p = root / RUNEVAL / "templates/tool-use.json"
     p.write_text(p.read_text()[:-3])
 
+@case("skeleton report link hardcoded", "hardcoded report link")
+def _(root):  # the regression that shipped in four real harnesses before the runtime helper
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         'print(f"report in the browser:  {report_host()}/evaluations/{run.run_id}")',
+         'print(f"report in the browser:  http://localhost:4700/evaluations/{run.run_id}")')
+
+@case("skeleton derives by splitting on /api/", "suffix-strip, not split")
+def _(root):  # split eats reverse-proxy path prefixes and chokes on api-in-hostname
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         'base[: -len("/api/v1")] if base.endswith("/api/v1") else base',
+         'base.split("/api/")[0]')
+
 # -- the audit's own safety net ---------------------------------------------------------
 @case("skills directory renamed", "a glob or regex is no longer finding")
 def _(root):  # the vacuous-pass case: zero of everything must be a failure, not a pass

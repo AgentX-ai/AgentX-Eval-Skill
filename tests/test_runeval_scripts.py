@@ -42,6 +42,51 @@ def case(desc, proc, want_exit, want_text):
         failures.append(f"{desc}: exit {proc.returncode} (want {want_exit}); output: {blob[:200]!r}")
 
 
+SHAPES = {
+    None:                                  "http://localhost:4700",       # unset -> default
+    "http://localhost:4700/api/v1":        "http://localhost:4700",       # standard self-host
+    "http://10.0.0.5:4700/api/v1":         "http://10.0.0.5:4700",        # user-provided box
+    "https://traces.example.com/api/v1":   "https://traces.example.com",  # reverse proxy on 443
+    "https://example.com/agentx/api/v1/":  "https://example.com/agentx",  # path prefix + trailing /
+    "http://api.mycorp:4700/api/v1":       "http://api.mycorp:4700",      # 'api' in the hostname
+    "https://api.agentx.so":               "https://api.agentx.so",       # no suffix -> untouched
+}
+
+
+def check_brief_report_host():
+    """Execute the report_host() the brief actually documents - not a copy of it - so the
+    doc and the behavior cannot drift apart. The skeleton is the code four real harnesses
+    were generated from; when it was a resolve-at-generation placeholder, all four shipped
+    with a stale literal."""
+    import re
+    brief = ROOT / "plugins/agentx/skills/run-eval/references/run-brief.md"
+    fences = re.findall(r"```python\n(.*?)```", brief.read_text(), flags=re.S)
+    skeleton = next((f for f in fences if "def report_host()" in f), "")
+    if not skeleton:
+        failures.append("run-brief.md: no fenced skeleton defines report_host()")
+        print("  FAIL  brief skeleton defines report_host()")
+        return
+    src = skeleton[skeleton.index("def report_host()"):]
+    src = src[: src.index("\n\n\ndef ")] if "\n\n\ndef " in src else src
+
+    class FakeOS:  # the skeleton reads os.getenv; feed it each shape
+        def __init__(self):
+            self.value = None
+        def getenv(self, key, default=None):
+            return self.value if self.value is not None else default
+
+    fake = FakeOS()
+    ns = {"os": fake}
+    exec(src, ns)  # noqa: S102 - executing our own documented skeleton is the point
+    for base, want in SHAPES.items():
+        fake.value = base
+        got = ns["report_host"]()
+        ok = got == want
+        print(f"  {'ok   ' if ok else 'FAIL '} brief report_host({base!r}) -> {got}")
+        if not ok:
+            failures.append(f"brief report_host({base!r}) = {got!r}, want {want!r}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -81,6 +126,8 @@ def main() -> int:
         case("network-needing call fails loudly against the dead port",
              run("pick_eval.py"),
              2, "cannot reach")
+
+    check_brief_report_host()
 
     if failures:
         print(f"\n  {len(failures)} failure(s):")
