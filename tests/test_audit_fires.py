@@ -29,6 +29,7 @@ AUDIT = "tests/audit_skills.py"
 
 INSTRUMENT = "plugins/agentx/skills/instrument"
 EVAL = "plugins/agentx/skills/eval-fix"
+RUNEVAL = "plugins/agentx/skills/run-eval"
 
 try:
     import agentx  # noqa: F401
@@ -158,6 +159,27 @@ def _(root):  # proves the nested manifest is actually reached
 @case("frontmatter without a description", "frontmatter has no description:")
 def _(root):
     edit(root, f"{EVAL}/SKILL.md", "description:", "desccription:")
+
+@case("template with a snake_case field", "must be 'expectedResults'")
+def _(root):  # the drift that would silently upload cases with no reference answers
+    edit(root, f"{RUNEVAL}/templates/tool-use.json", '"expectedResults"', '"expected_results"')
+
+@case("template that is not JSON", "not valid JSON")
+def _(root):
+    p = root / RUNEVAL / "templates/tool-use.json"
+    p.write_text(p.read_text()[:-3])
+
+@case("skeleton report link hardcoded", "hardcoded report link")
+def _(root):  # the regression that shipped in four real harnesses before the runtime helper
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         'print(f"report in the browser:  {report_host()}/evaluations/{run.run_id}")',
+         'print(f"report in the browser:  http://localhost:4700/evaluations/{run.run_id}")')
+
+@case("skeleton derives by splitting on /api/", "suffix-strip, not split")
+def _(root):  # split eats reverse-proxy path prefixes and chokes on api-in-hostname
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         'base[: -len("/api/v1")] if base.endswith("/api/v1") else base',
+         'base.split("/api/")[0]')
 
 # -- the audit's own safety net ---------------------------------------------------------
 @case("skills directory renamed", "a glob or regex is no longer finding")

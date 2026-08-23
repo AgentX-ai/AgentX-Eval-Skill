@@ -43,13 +43,15 @@ from collections import Counter
 stats: Counter = Counter()
 
 FLOORS = {
-    "scripts": 4,            # 3 in instrument + fetch_analysis.py
-    "commands": 15,          # documented invocations across the skills
-    "flags": 10,             # --flags validated inside those commands
+    "scripts": 6,            # 3 in instrument + fetch_analysis.py + 2 in run-eval
+    "commands": 20,          # documented invocations across the skills
+    "flags": 15,             # --flags validated inside those commands
     "fenced imports": 2,     # from agentx ... import ... in fenced blocks
     "sdk symbols": 8,        # integration classes and patch functions named
     "manifests": 3,          # marketplace.json files reached
-    "skill frontmatter": 2,  # SKILL.md files with name/description checked
+    "skill frontmatter": 3,  # SKILL.md files with name/description checked
+    "templates": 3,          # dataset templates parsed and shape-checked
+    "brief skeleton": 1,     # run-brief harness skeleton derives the link at runtime
 }
 
 
@@ -315,6 +317,78 @@ def check_manifests() -> None:
                     fail(str(skill.relative_to(ROOT)), f"frontmatter has no {key}")
 
 
+# --------------------------------------------------------------------------------------
+# Dataset templates the run-eval skill ships
+# --------------------------------------------------------------------------------------
+def check_templates() -> None:
+    """A template is a POST /datasets payload frozen into the repo. The engine validates
+    only name and questions[].main_question.query at the door, so a drifted field name
+    (expected_results for expectedResults, say) would not fail creation - it would
+    silently upload cases with no reference answers. This is where that drift fails."""
+    for path in sorted(SKILLS.glob("*/templates/*.json")):
+        stats["templates"] += 1
+        rel = str(path.relative_to(ROOT))
+        try:
+            data = json.loads(path.read_text())
+        except json.JSONDecodeError as exc:
+            fail(rel, f"not valid JSON: {exc}")
+            continue
+        if not (isinstance(data.get("name"), str) and data["name"].strip()):
+            fail(rel, "no 'name'")
+        questions = data.get("questions")
+        if not (isinstance(questions, list) and questions):
+            fail(rel, "no 'questions'")
+            continue
+        for i, q in enumerate(questions):
+            main = (q or {}).get("main_question") or {}
+            if not (isinstance(main.get("query"), str) and main["query"].strip()):
+                fail(rel, f"questions[{i}].main_question.query missing")
+            if "expected_results" in main or "expectedResults" not in main:
+                fail(rel, f"questions[{i}]: reference answer must be 'expectedResults' "
+                          "(camelCase, the wire field) and must be present")
+            smoke = main.get("smokeTest")
+            if smoke is not None and not (isinstance(smoke, dict) and smoke.get("enabled") is True
+                                          and isinstance(smoke.get("count"), int)):
+                fail(rel, f"questions[{i}].smokeTest must be {{enabled: true, count: int}}")
+
+
+# --------------------------------------------------------------------------------------
+# The run-eval brief's harness skeleton
+# --------------------------------------------------------------------------------------
+def check_brief_skeleton() -> None:
+    """The report link must be derived at RUNTIME from AGENTX_API_BASE_URL. This
+    regressed once already: the skeleton carried a placeholder the generating agent
+    resolved to a literal, so four of five real harnesses shipped with localhost
+    baked in while the run itself followed the env. Structure is checked here; the
+    derivation's behavior is executed against real address shapes in
+    tests/test_runeval_scripts.py."""
+    brief = SKILLS / "run-eval/references/run-brief.md"
+    if not brief.exists():
+        fail("run-eval/references/run-brief.md", "missing")
+        return
+    stats["brief skeleton"] += 1
+    text = brief.read_text()
+    fences = re.findall(r"```python\n(.*?)```", text, flags=re.S)
+    skeleton = next((f for f in fences if "def adapter(case):" in f), "")
+    if not skeleton:
+        fail(str(brief.relative_to(ROOT)), "no fenced python skeleton with adapter()")
+        return
+    if "def report_host()" not in skeleton or "AGENTX_API_BASE_URL" not in skeleton:
+        fail(str(brief.relative_to(ROOT)),
+             "skeleton must derive the report link at runtime via report_host() "
+             "reading AGENTX_API_BASE_URL")
+    if "report_host()" not in skeleton.split("def main_entry")[-1]:
+        fail(str(brief.relative_to(ROOT)), "main_entry must print via report_host()")
+    for bad, why in (
+        ("<engine-base-url", "the resolve-at-generation-time placeholder is the bug"),
+        ('host = "http', "a literal host baked into the skeleton"),
+        ('localhost:4700/evaluations', "a hardcoded report link"),
+        ('.split("/api/")', "suffix-strip, not split - proxy prefixes and api-in-hostname break split"),
+    ):
+        if bad in skeleton:
+            fail(str(brief.relative_to(ROOT)), f"skeleton contains {bad!r} - {why}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -327,6 +401,8 @@ def main() -> int:
     check_commands()
     check_readme_flags()
     check_manifests()
+    check_templates()
+    check_brief_skeleton()
     if args.skip_sdk:
         notes.append("SDK checks skipped (--skip-sdk)")
     else:

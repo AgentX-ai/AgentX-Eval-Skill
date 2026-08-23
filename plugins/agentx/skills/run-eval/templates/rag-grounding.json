@@ -1,0 +1,44 @@
+{
+  "name": "Template: RAG Grounding",
+  "description": "Starter cases for a retrieval-backed agent: faithfulness to retrieved context and honesty when retrieval comes back empty. Pairs with the built-in RAG judges. Shipped by the run-eval skill.",
+  "numberOfRequests": 1,
+  "acceptanceCriteria": "Every factual claim is traceable to retrieved context. When the context does not contain the answer, the response says so instead of filling the gap from prior knowledge.",
+  "rejectionCriteria": "Claims not present in the retrieved context, citations to documents that were not retrieved, or a confident answer where retrieval returned nothing relevant.",
+  "questions": [
+    {
+      "main_question": {
+        "query": "What does our documentation say about rate limits?",
+        "expectedResults": "States the limits exactly as the retrieved documentation gives them, cites which document they came from, and does not round numbers or add limits the docs never mention."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "Summarize our refund policy in two sentences.",
+        "expectedResults": "A two-sentence summary containing only terms present in the retrieved policy text - windows, conditions, exclusions - with nothing paraphrased into a stronger claim than the source makes."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "What is our policy on quantum computing exports?",
+        "expectedResults": "Assuming no such document exists in the knowledge base: says the retrieved sources do not cover this, rather than composing a plausible policy. An invented policy is the failure this case exists to catch."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "Which plan includes SSO, and what does it cost?",
+        "expectedResults": "Names the plan and price exactly as retrieved. If pricing is not in the retrieved context, says where to find it instead of quoting a remembered number."
+      },
+      "follow_up_questions": []
+    },
+    {
+      "main_question": {
+        "query": "Compare what our docs say about the v1 and v2 APIs.",
+        "expectedResults": "A comparison built only from retrieved passages about each version, clearly attributing which claims come from which document, and flagging any aspect the docs cover for one version but not the other."
+      },
+      "follow_up_questions": []
+    }
+  ]
+}
