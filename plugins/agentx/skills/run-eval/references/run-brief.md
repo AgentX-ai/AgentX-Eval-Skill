@@ -178,20 +178,24 @@ prefix, and `api` may legitimately appear in a hostname.)
 
 ## Phase 3 - Preflight, then get a go-ahead
 
-A run spends real money twice per case: the agent's own model calls, and the judge. Say
-what is about to happen - `N cases x M requests each, agent model <X>, judged
-server-side` - and confirm with the user before executing, unless they already told you
-to run without asking.
+A run spends real money twice per case: the agent's own model calls, and the judge. So this
+phase is two things - an honest number, and a question that carries it.
 
-Both numbers come off one read, and it is not a snippet you have to write:
+The numbers come off one read, and it is not a snippet you have to write:
 
 ```bash
 python3 <skill>/scripts/pick_eval.py --validate-dataset <dataset-id> --json
 ```
 
-`dataset.cases` and `dataset.numberOfRequests` are the whole arithmetic, and the agent model
-is what Phase 0 found. It reads `.env.agentx` on its own, so it needs nothing imported from
-the repo. Do not guess either number.
+`dataset.cases` and `dataset.numberOfRequests` are the arithmetic, and the agent model is what
+Phase 0 found. It reads `.env.agentx` on its own, so it needs nothing imported from the repo.
+Do not guess either number.
+
+**Quote that product as a floor, not a total.** The engine generates smoke-test variants of
+its own - paraphrases of a question - and they are answered through the adapter and judged
+like any other case, so a six-case run can finalize at eight rated results. Say `at least
+N x M`; a preflight that promises an exact number and then bills a third more is worse than
+one that promised a range.
 
 **A throwaway snippet here must import the repo's config first.** `AgentX.from_env()` reads the
 environment at the moment it is called, and the thing that puts `.env.agentx` into the
@@ -199,6 +203,23 @@ environment is the repo's own config module. So a preflight that opens `from age
 AgentX` and calls `from_env()` raises `AgentXAuthError` in a repo that is set up correctly - and
 the error names a missing key, not the missing import that caused it. The skeleton has the order
 right; ad-hoc snippets are where it gets dropped.
+
+### Then ask, rather than narrating and proceeding
+
+**One AskUserQuestion, two options, and the cost goes inside the option text.** A number in a
+paragraph above the question is a number nobody read before approving.
+
+| Option | What its description has to carry |
+|---|---|
+| **Run it now** | The dataset by name and id, and `at least N x M agent runs on <model>, each judged server-side`. This is the money sentence and it belongs where the click is. |
+| **Later** | That nothing is lost by waiting: the harness is written and committed, the dataset row already exists. Name the one command that runs it - `.venv/bin/python eval/run_eval.py`. |
+
+**Skip the question when the user has already answered it** - `/run-eval <id> and just run
+it`, or an earlier "stop asking". Re-asking reads as not listening.
+
+On **Later**, finish cleanly instead of trailing off: the dataset id, the committed harness
+path, the command above, and that `/agentx:eval-fix` picks up from a run whenever one
+happens. A declined run is a finished handoff, not an abandoned job.
 
 ## Phase 4 - Run it
 
@@ -221,7 +242,10 @@ happened; do not try to resume into the same run id.
 The run printing a score is not the verification. Three reads:
 
 1. **The run exists and is finalized** - `GET /custom-agent-evaluations/runs/<run-id>`
-   returns it with `rated_count` matching cases x requests.
+   returns it with `rated_count` **at least** cases x requests. More than that is normal,
+   not a fault: the engine's own smoke-test variants are rated alongside the dataset's
+   cases. Fewer means results went missing. `fetch_analysis.py` marks which rows are
+   variants (`is_smoke_test_variant`), so the two are separable when reporting.
 2. **Results link to traces** - every result row carries a `traceId`. Zero linked
    results means the adapter pattern was broken (usually the two-tracer trap) - the
    scores are still real, but `/eval-fix` will be triaging answer text instead of
