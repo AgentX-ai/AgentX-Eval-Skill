@@ -32,7 +32,7 @@ jobs:
       - run: python3 tests/test_runeval_scripts.py
       - run: python3 tests/test_live_link.py   # SKIPs where no engine is reachable
       # The audit is a smoke detector; this proves the detector itself, by breaking a copy
-      # of the repo 16 ways (20 with the SDK) and requiring each break to be caught by name.
+      # of the repo 20 ways (29 with the SDK) and requiring each break to be caught by name.
       - run: python3 tests/test_audit_fires.py
 
   sdk:

@@ -181,6 +181,33 @@ def _(root):  # split eats reverse-proxy path prefixes and chokes on api-in-host
          'base[: -len("/api/v1")] if base.endswith("/api/v1") else base',
          'base.split("/api/")[0]')
 
+# -- the skeleton's grading path --------------------------------------------------------
+# The SDK renamed the grader keyword under all of these (scorer_id, with
+# evaluation_settings_id kept as an alias) and the audit did not notice, because nothing
+# reached client.evaluations. Each case is a way that rename could have landed badly.
+@case("harness names a grader keyword the SDK dropped", "is not a parameter", needs_sdk=True)
+def _(root):  # what a dropped evaluation_settings_id alias looks like from here
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         '**({"evaluation_settings_id": SETTINGS_ID} if SETTINGS_ID else {}),',
+         '**({"evaluation_settings": SETTINGS_ID} if SETTINGS_ID else {}),')
+
+@case("harness chains a run method that is gone", "chains .commit()", needs_sdk=True)
+def _(root):
+    edit(root, f"{RUNEVAL}/references/run-brief.md",
+         ".execute(adapter).finalize()", ".execute(adapter).commit()")
+
+@case("harness reads a run field that is gone", "run.mean_rating", needs_sdk=True)
+def _(root):
+    edit(root, f"{RUNEVAL}/references/run-brief.md", "average_rating", "mean_rating")
+
+@case("harness reads a dataset field that is gone", "not a field of Dataset", needs_sdk=True)
+def _(root):
+    edit(root, f"{RUNEVAL}/references/run-brief.md", "dataset.questions", "dataset.cases")
+
+@case("harness subject the SDK rejects", "does not validate", needs_sdk=True)
+def _(root):  # the framework="langgraph" bug, one field over - pydantic refuses both
+    edit(root, f"{RUNEVAL}/references/run-brief.md", '"custom_agent"', '"custom_agnet"')
+
 # -- the audit's own safety net ---------------------------------------------------------
 @case("skills directory renamed", "a glob or regex is no longer finding")
 def _(root):  # the vacuous-pass case: zero of everything must be a failure, not a pass
