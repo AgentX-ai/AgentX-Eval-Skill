@@ -58,7 +58,7 @@ if it is absent, the instrument skill's `agentx_key.py` writes it - run that fir
 
 | Given | Do |
 |---|---|
-| both | Validate each (below), then go to the brief. No questions. |
+| both | Validate each (below), then go to the brief. No picker questions - the brief's Phase 3 still asks for the go-ahead. |
 | dataset only | The dataset's own grading config grades it - that is the default, not a degraded mode. One line saying so, then the brief. |
 | neither | The two pickers below - one AskUserQuestion each, never more. |
 | an id that fails validation | Say which engine and project were checked, then fall into the picker with the failure stated. A wrong-engine or wrong-project id fails exactly like a typo, and this is where that surfaces. |
@@ -152,5 +152,5 @@ that the row is permanent; `--dry-run` prints the payload and writes nothing.
   triaged change.
 - **Score hosted-platform agents.** Different dialect, different ids.
 - **Invent an evaluation the user did not ask for.** A run costs real judge and agent
-  calls; the preflight in the brief states the case count and gets a go-ahead before
-  anything executes.
+  calls, so the brief's Phase 3 puts one AskUserQuestion - run it now, or later with the
+  command that runs it - between the written harness and any spend.

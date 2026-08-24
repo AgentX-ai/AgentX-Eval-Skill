@@ -140,6 +140,14 @@ if __name__ == "__main__":
         config.tracer.flush()      # daemon delivery thread; a CLI must drain it
 ```
 
+**`case` is flat; the dataset is not.** The runner hands `adapter()` a case whose text is
+`case.query`. The dataset's own questions nest one level down -
+`questions[i].main_question.query` - which is what the templates hold, what
+`make_dataset.py` writes and what `datasets.get()` returns. Read the dataset, then reach
+for `main_question` (or a bare `q.query`) inside the adapter, and you get empty strings
+that look exactly like an empty dataset. Nested on the dataset side, flat on the adapter
+side; the boundary is `adapter()` itself.
+
 `subject.framework` is a **strict Literal** in the SDK - an off-list value fails pydantic
 validation before any run is created. Valid: `raw_python`, `openai`, `anthropic`, `google`,
 `langchain`, `llamaindex`, `crewai`, `autogen`, `n8n`, `flowise`, `other`. LangGraph is not
@@ -170,11 +178,55 @@ prefix, and `api` may legitimately appear in a hostname.)
 
 ## Phase 3 - Preflight, then get a go-ahead
 
-A run spends real money twice per case: the agent's own model calls, and the judge. Say
-what is about to happen - `N cases x M requests each, agent model <X>, judged
-server-side` - and confirm with the user before executing, unless they already told you
-to run without asking. `--dry-run` on the dataset side and `datasets.get()` in the
-harness give you the numbers; do not guess them.
+A run spends real money twice per case: the agent's own model calls, and the judge. So this
+phase is two things - an honest number, and a question that carries it.
+
+The numbers come off one read, and it is not a snippet you have to write:
+
+```bash
+python3 <skill>/scripts/pick_eval.py --validate-dataset <dataset-id> --json
+```
+
+It reads `.env.agentx` on its own, so it needs nothing imported from the repo, and the agent
+model is what Phase 0 found.
+
+**Quote `dataset.ratedItems`, not `cases x requests`.** A dataset question can declare
+`smokeTest: {enabled, count}`, and the engine rates that many paraphrases of it beside the
+original. They are declared data, not a surprise at run time - which is why the helper can
+total them and the preflight can be exact. Two of the three shipped templates enable it:
+
+| Template | Cases | Declared variants | Rated |
+|---|---|---|---|
+| `customer-support` | 6 | 2 | **8** |
+| `tool-use` | 5 | 2 | **7** |
+| `rag-grounding` | 5 | 0 | **5** |
+
+Quote `cases x requests` on the first of those and the preflight under-promises by a third,
+on the template most likely to be picked. Do not guess any of it.
+
+**A throwaway snippet here must import the repo's config first.** `AgentX.from_env()` reads the
+environment at the moment it is called, and the thing that puts `.env.agentx` into the
+environment is the repo's own config module. So a preflight that opens `from agentx import
+AgentX` and calls `from_env()` raises `AgentXAuthError` in a repo that is set up correctly - and
+the error names a missing key, not the missing import that caused it. The skeleton has the order
+right; ad-hoc snippets are where it gets dropped.
+
+### Then ask, rather than narrating and proceeding
+
+**One AskUserQuestion, two options, and the cost goes inside the option text.** A number in a
+paragraph above the question is a number nobody read before approving.
+
+| Option | What its description has to carry |
+|---|---|
+| **Run it now** | The dataset by name and id, and `<ratedItems> rated items on <model>, each answered by the agent and judged server-side`. This is the money sentence and it belongs where the click is. |
+| **Later** | That nothing is lost by waiting: the harness is written and committed, the dataset row already exists. Name the one command that runs it - `.venv/bin/python eval/run_eval.py`. |
+
+**Skip the question when the user has already answered it** - `/run-eval <id> and just run
+it`, or an earlier "stop asking". Re-asking reads as not listening.
+
+On **Later**, finish cleanly instead of trailing off: the dataset id, the committed harness
+path, the command above, and that `/agentx:eval-fix` picks up from a run whenever one
+happens. A declined run is a finished handoff, not an abandoned job.
 
 ## Phase 4 - Run it
 
@@ -197,7 +249,11 @@ happened; do not try to resume into the same run id.
 The run printing a score is not the verification. Three reads:
 
 1. **The run exists and is finalized** - `GET /custom-agent-evaluations/runs/<run-id>`
-   returns it with `rated_count` matching cases x requests.
+   returns it with `rated_count` matching the `dataset.ratedItems` quoted in Phase 3, which
+   is cases x requests **plus** the dataset's declared smoke-test variants. A count that
+   lands exactly on cases x requests is the near-miss worth catching: on a dataset that
+   declares variants, it means they were not rated. `fetch_analysis.py` marks which rows
+   are variants (`is_smoke_test_variant`), so the two stay separable when reporting.
 2. **Results link to traces** - every result row carries a `traceId`. Zero linked
    results means the adapter pattern was broken (usually the two-tracer trap) - the
    scores are still real, but `/eval-fix` will be triaging answer text instead of
