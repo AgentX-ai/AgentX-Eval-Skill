@@ -187,15 +187,22 @@ The numbers come off one read, and it is not a snippet you have to write:
 python3 <skill>/scripts/pick_eval.py --validate-dataset <dataset-id> --json
 ```
 
-`dataset.cases` and `dataset.numberOfRequests` are the arithmetic, and the agent model is what
-Phase 0 found. It reads `.env.agentx` on its own, so it needs nothing imported from the repo.
-Do not guess either number.
+It reads `.env.agentx` on its own, so it needs nothing imported from the repo, and the agent
+model is what Phase 0 found.
 
-**Quote that product as a floor, not a total.** The engine generates smoke-test variants of
-its own - paraphrases of a question - and they are answered through the adapter and judged
-like any other case, so a six-case run can finalize at eight rated results. Say `at least
-N x M`; a preflight that promises an exact number and then bills a third more is worse than
-one that promised a range.
+**Quote `dataset.ratedItems`, not `cases x requests`.** A dataset question can declare
+`smokeTest: {enabled, count}`, and the engine rates that many paraphrases of it beside the
+original. They are declared data, not a surprise at run time - which is why the helper can
+total them and the preflight can be exact. Two of the three shipped templates enable it:
+
+| Template | Cases | Declared variants | Rated |
+|---|---|---|---|
+| `customer-support` | 6 | 2 | **8** |
+| `tool-use` | 5 | 2 | **7** |
+| `rag-grounding` | 5 | 0 | **5** |
+
+Quote `cases x requests` on the first of those and the preflight under-promises by a third,
+on the template most likely to be picked. Do not guess any of it.
 
 **A throwaway snippet here must import the repo's config first.** `AgentX.from_env()` reads the
 environment at the moment it is called, and the thing that puts `.env.agentx` into the
@@ -211,7 +218,7 @@ paragraph above the question is a number nobody read before approving.
 
 | Option | What its description has to carry |
 |---|---|
-| **Run it now** | The dataset by name and id, and `at least N x M agent runs on <model>, each judged server-side`. This is the money sentence and it belongs where the click is. |
+| **Run it now** | The dataset by name and id, and `<ratedItems> rated items on <model>, each answered by the agent and judged server-side`. This is the money sentence and it belongs where the click is. |
 | **Later** | That nothing is lost by waiting: the harness is written and committed, the dataset row already exists. Name the one command that runs it - `.venv/bin/python eval/run_eval.py`. |
 
 **Skip the question when the user has already answered it** - `/run-eval <id> and just run
@@ -242,10 +249,11 @@ happened; do not try to resume into the same run id.
 The run printing a score is not the verification. Three reads:
 
 1. **The run exists and is finalized** - `GET /custom-agent-evaluations/runs/<run-id>`
-   returns it with `rated_count` **at least** cases x requests. More than that is normal,
-   not a fault: the engine's own smoke-test variants are rated alongside the dataset's
-   cases. Fewer means results went missing. `fetch_analysis.py` marks which rows are
-   variants (`is_smoke_test_variant`), so the two are separable when reporting.
+   returns it with `rated_count` matching the `dataset.ratedItems` quoted in Phase 3, which
+   is cases x requests **plus** the dataset's declared smoke-test variants. A count that
+   lands exactly on cases x requests is the near-miss worth catching: on a dataset that
+   declares variants, it means they were not rated. `fetch_analysis.py` marks which rows
+   are variants (`is_smoke_test_variant`), so the two stay separable when reporting.
 2. **Results link to traces** - every result row carries a `traceId`. Zero linked
    results means the adapter pattern was broken (usually the two-tracer trap) - the
    scores are still real, but `/eval-fix` will be triaging answer text instead of

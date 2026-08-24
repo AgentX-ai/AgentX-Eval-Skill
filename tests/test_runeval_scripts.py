@@ -87,6 +87,47 @@ def check_brief_report_host():
             failures.append(f"brief report_host({base!r}) = {got!r}, want {want!r}")
 
 
+def check_smoke_test_totals():
+    """The preflight quotes a number the user approves a spend against.
+
+    It is `cases x requests + declared smoke-test variants`, and the variants hide one
+    level down in `main_question.smokeTest` - so a summariser that counts questions
+    alone under-promises by a third on customer-support, the template most likely to be
+    picked. Hold pick_eval's arithmetic against the shipped templates, and hold the
+    brief's table against the same source, so neither drifts from the JSON.
+    """
+    sys.path.insert(0, str(SCRIPTS))
+    import pick_eval
+
+    templates = ROOT / "plugins/agentx/skills/run-eval/templates"
+    brief = (ROOT / "plugins/agentx/skills/run-eval/references/run-brief.md").read_text()
+
+    for name, cases, variants in (("customer-support", 6, 2), ("tool-use", 5, 2), ("rag-grounding", 5, 0)):
+        questions = json.loads((templates / f"{name}.json").read_text())["questions"]
+        summary = pick_eval.summarize_dataset(
+            {"_id": "x", "name": name, "questions": questions, "numberOfRequests": 1}
+        )
+        rated = cases + variants
+        ok = (summary["cases"], summary["smokeTestVariants"], summary["ratedItems"]) == (cases, variants, rated)
+        print(f"  {'ok   ' if ok else 'FAIL '} {name}: {cases} cases + {variants} variant(s) = {rated} rated")
+        if not ok:
+            failures.append(f"{name}: pick_eval says {summary}, template holds {cases}/{variants}")
+        # The brief prints these numbers in a table someone reads before spending money.
+        row = f"| `{name}` | {cases} | {variants} | **{rated}** |"
+        if row not in brief:
+            failures.append(f"run-brief.md: preflight table has no row {row!r}")
+            print(f"  FAIL  brief table row for {name}")
+
+    # A disabled block, a bare question and a None must all count zero rather than raise.
+    edge = pick_eval.smoke_test_variants(
+        [{"main_question": {"smokeTest": {"enabled": False, "count": 9}}}, {}, None]
+    )
+    ok = edge == 0
+    print(f"  {'ok   ' if ok else 'FAIL '} disabled/absent smokeTest counts zero")
+    if not ok:
+        failures.append(f"smoke_test_variants counted {edge} where nothing is enabled")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -128,6 +169,7 @@ def main() -> int:
              2, "cannot reach")
 
     check_brief_report_host()
+    check_smoke_test_totals()
 
     if failures:
         print(f"\n  {len(failures)} failure(s):")

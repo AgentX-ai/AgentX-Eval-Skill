@@ -93,13 +93,35 @@ def get(base: str, key: str, path: str):
         die(f"cannot reach {base} ({e.reason}). Is the engine running?", 2)
 
 
+def smoke_test_variants(questions: list) -> int:
+    """Extra rated items the dataset asks for on top of its own questions.
+
+    A question can carry `smokeTest: {enabled, count}`, and the engine then rates that
+    many paraphrases of it alongside the original. They are declared here, not invented
+    at run time, so the preflight can state the real number instead of a floor - two of
+    the three shipped templates enable it, which is why a 6-case dataset finalizes at 8.
+    """
+    total = 0
+    for q in questions or []:
+        main = (q or {}).get("main_question") or q or {}
+        smoke = main.get("smokeTest") or {}
+        if smoke.get("enabled"):
+            total += smoke.get("count") or 0
+    return total
+
+
 def summarize_dataset(row: dict) -> dict:
     questions = row.get("questions") or []
+    variants = smoke_test_variants(questions)
+    requests = row.get("numberOfRequests")
     return {
         "id": row.get("_id") or row.get("id"),
         "name": row.get("name") or "(unnamed)",
         "cases": len(questions),
-        "numberOfRequests": row.get("numberOfRequests"),
+        "numberOfRequests": requests,
+        "smokeTestVariants": variants,
+        # What a run of this dataset actually bills, agent call and judge call alike.
+        "ratedItems": len(questions) * (requests or 1) + variants,
         "hasCriteria": bool(row.get("acceptanceCriteria") or row.get("rejectionCriteria")),
         "description": (row.get("description") or "")[:140],
     }
@@ -145,7 +167,12 @@ def main() -> None:
             if args.json:
                 print(json.dumps({"ok": True, "kind": kind, kind: summary}))
             else:
-                extra = f", {summary['cases']} case(s)" if kind == "dataset" else ""
+                extra = ""
+                if kind == "dataset":
+                    extra = f", {summary['cases']} case(s)"
+                    if summary["smokeTestVariants"]:
+                        extra += (f" + {summary['smokeTestVariants']} smoke-test variant(s)"
+                                  f" = {summary['ratedItems']} rated")
                 print(f"ok: {kind} {ident} is '{summary['name']}'{extra} on {base}")
             return
         if args.json:
@@ -184,7 +211,8 @@ def main() -> None:
     if not datasets:
         print("  none - this project has no datasets yet. A template, a file, or live traces can seed one.")
     for d in datasets[: args.limit]:
-        print(f"  {d['id']}  {d['name']}  ({d['cases']} case(s))")
+        variants = f" +{d['smokeTestVariants']} variant(s)" if d["smokeTestVariants"] else ""
+        print(f"  {d['id']}  {d['name']}  ({d['cases']} case(s){variants})")
     print(f"\nevaluation settings ({len(settings)}):")
     for s in settings[: args.limit]:
         mark = "  [default]" if s["isDefault"] else ""
