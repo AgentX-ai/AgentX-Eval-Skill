@@ -52,6 +52,7 @@ FLOORS = {
     "skill frontmatter": 3,  # SKILL.md files with name/description checked
     "templates": 3,          # dataset templates parsed and shape-checked
     "brief skeleton": 1,     # run-brief harness skeleton derives the link at runtime
+    "harness call sites": 12,  # evaluations calls in that skeleton, resolved against the SDK
 }
 
 
@@ -261,6 +262,107 @@ def check_sdk() -> None:
         if keyword not in params:
             fail("docs", f"pass tracer.trace({keyword}=...), which is not a parameter")
 
+    check_evaluations_surface()
+
+
+# --------------------------------------------------------------------------------------
+# 3d. The grading path the generated harness runs on  (needs agentx-python)
+# --------------------------------------------------------------------------------------
+def check_evaluations_surface() -> None:
+    """Resolve the run-brief skeleton's `client.evaluations` calls against the SDK.
+
+    Everything above this reaches imports, integration classes and the tracer. Nothing
+    reached `client.evaluations`, so the entire grading path went unchecked: the call
+    that starts a run, the keyword naming its grader, and the fields the harness prints
+    off the finished run. That keyword is the one the judge-scorer consolidation renamed
+    - `scorer_id` now, with `evaluation_settings_id` kept as an alias - and the alias is
+    the only thing standing between this skeleton and a TypeError. The audit stayed
+    green through the whole rename, which is the silent failure this file exists to
+    prevent.
+
+    It matters more here than in the other briefs because the skeleton is not read, it
+    is copied: it lands in a user's repo as eval/run_eval.py and is committed there, so
+    it breaks in their harness long after the SDK moved.
+
+    The skeleton is not valid Python (`main.<callable>` is a placeholder), so it is read
+    by regex like the rest of the docs - over the same bytes real harnesses come from.
+    """
+    brief = SKILLS / "run-eval/references/run-brief.md"
+    if not brief.exists():
+        return  # check_brief_skeleton already reported it
+    skeleton = next((f for f in re.findall(r"```python\n(.*?)```", brief.read_text(), re.S)
+                     if "def adapter(case):" in f), "")
+    if not skeleton:
+        return  # ditto
+    rel = str(brief.relative_to(ROOT))
+
+    try:
+        from agentx.evaluations.datasets import DatasetClient
+        from agentx.evaluations.models import Dataset, EvaluationSubject
+        from agentx.evaluations.runner import EvaluationRunContext, EvaluationsRunner
+    except ImportError as exc:
+        fail(rel, f"the SDK's evaluations surface moved: {exc}")
+        return
+
+    import inspect
+
+    # The call that starts the run, and whatever is chained onto it.
+    call = re.search(r"evaluations\.run\((.*?)\n\s*\)((?:\.\w+\([^()]*\))*)", skeleton, re.S)
+    if not call:
+        fail(rel, "skeleton no longer calls evaluations.run(...) - nothing starts a run")
+        return
+    args, chain = call.group(1), call.group(2)
+
+    # Keywords passed directly, plus a grader passed through a **{...} splat. The keys
+    # inside subject={...} are data, not keywords, which is why the splat is matched on
+    # its own rather than by sweeping every quoted key in the argument list.
+    passed = set(re.findall(r"^\s*(\w+)=", args, re.M))
+    passed |= set(re.findall(r"\*\*\(\s*\{\s*[\"'](\w+)[\"']\s*:", args))
+    run_params = set(inspect.signature(EvaluationsRunner.run).parameters) - {"self"}
+    for keyword in sorted(passed):
+        stats["harness call sites"] += 1
+        if keyword not in run_params:
+            fail(rel, f"skeleton passes evaluations.run({keyword}=...), which is not a "
+                      f"parameter - it takes {', '.join(sorted(run_params))}")
+
+    for method in sorted(set(re.findall(r"\.(\w+)\(", chain))):
+        stats["harness call sites"] += 1
+        if not hasattr(EvaluationRunContext, method):
+            fail(rel, f"skeleton chains .{method}() onto the run, which "
+                      "EvaluationRunContext does not have")
+
+    # Everything read off the finished run - and the reason reading it there is legal.
+    for attr in sorted(set(re.findall(r"\brun\.(\w+)", skeleton))):
+        stats["harness call sites"] += 1
+        if not hasattr(EvaluationRunContext, attr):
+            fail(rel, f"skeleton reads run.{attr}, which EvaluationRunContext does not have")
+    if hasattr(EvaluationRunContext, "finalize"):
+        returns = str(inspect.signature(EvaluationRunContext.finalize).return_annotation)
+        if "EvaluationRunContext" not in returns:
+            fail(rel, f"finalize() now returns {returns} - the skeleton reads run.<attr> "
+                      "off whatever it hands back")
+
+    for method in sorted(set(re.findall(r"evaluations\.datasets\.(\w+)\(", skeleton))):
+        stats["harness call sites"] += 1
+        if not hasattr(DatasetClient, method):
+            fail(rel, f"skeleton calls evaluations.datasets.{method}(), which DatasetClient "
+                      "does not have")
+    for field in sorted(set(re.findall(r"\bdataset\.(\w+)", skeleton))):
+        stats["harness call sites"] += 1
+        if field not in Dataset.model_fields:
+            fail(rel, f"skeleton reads dataset.{field}, which is not a field of Dataset")
+
+    # subject= is a literal dict here, and pydantic rejects an off-list kind before any
+    # run is created - the same way it rejects an off-list framework (see the brief).
+    subject = re.search(r"subject=(\{[^{}]*\})", args)
+    if subject:
+        stats["harness call sites"] += 1
+        try:
+            EvaluationSubject(**ast.literal_eval(subject.group(1)))
+        except Exception as exc:
+            first = (str(exc).splitlines() or ["no message"])[0]
+            fail(rel, f"skeleton's subject={subject.group(1)} does not validate: {first[:90]}")
+
 
 # --------------------------------------------------------------------------------------
 # 4. The manifests - three ecosystems that have drifted apart before (see c5882fa)
@@ -408,7 +510,7 @@ def main() -> int:
     else:
         check_sdk()
 
-    sdk_floors = {"fenced imports", "sdk symbols"}
+    sdk_floors = {"fenced imports", "sdk symbols", "harness call sites"}
     for what, floor in FLOORS.items():
         if args.skip_sdk and what in sdk_floors:
             continue
