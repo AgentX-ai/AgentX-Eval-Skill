@@ -140,6 +140,14 @@ if __name__ == "__main__":
         config.tracer.flush()      # daemon delivery thread; a CLI must drain it
 ```
 
+**`case` is flat; the dataset is not.** The runner hands `adapter()` a case whose text is
+`case.query`. The dataset's own questions nest one level down -
+`questions[i].main_question.query` - which is what the templates hold, what
+`make_dataset.py` writes and what `datasets.get()` returns. Read the dataset, then reach
+for `main_question` (or a bare `q.query`) inside the adapter, and you get empty strings
+that look exactly like an empty dataset. Nested on the dataset side, flat on the adapter
+side; the boundary is `adapter()` itself.
+
 `subject.framework` is a **strict Literal** in the SDK - an off-list value fails pydantic
 validation before any run is created. Valid: `raw_python`, `openai`, `anthropic`, `google`,
 `langchain`, `llamaindex`, `crewai`, `autogen`, `n8n`, `flowise`, `other`. LangGraph is not
@@ -173,8 +181,24 @@ prefix, and `api` may legitimately appear in a hostname.)
 A run spends real money twice per case: the agent's own model calls, and the judge. Say
 what is about to happen - `N cases x M requests each, agent model <X>, judged
 server-side` - and confirm with the user before executing, unless they already told you
-to run without asking. `--dry-run` on the dataset side and `datasets.get()` in the
-harness give you the numbers; do not guess them.
+to run without asking.
+
+Both numbers come off one read, and it is not a snippet you have to write:
+
+```bash
+python3 <skill>/scripts/pick_eval.py --validate-dataset <dataset-id> --json
+```
+
+`dataset.cases` and `dataset.numberOfRequests` are the whole arithmetic, and the agent model
+is what Phase 0 found. It reads `.env.agentx` on its own, so it needs nothing imported from
+the repo. Do not guess either number.
+
+**A throwaway snippet here must import the repo's config first.** `AgentX.from_env()` reads the
+environment at the moment it is called, and the thing that puts `.env.agentx` into the
+environment is the repo's own config module. So a preflight that opens `from agentx import
+AgentX` and calls `from_env()` raises `AgentXAuthError` in a repo that is set up correctly - and
+the error names a missing key, not the missing import that caused it. The skeleton has the order
+right; ad-hoc snippets are where it gets dropped.
 
 ## Phase 4 - Run it
 
