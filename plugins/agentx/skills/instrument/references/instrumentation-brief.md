@@ -190,6 +190,37 @@ drift.
 
 ---
 
+## House style for the lines you add
+
+Phases 2 through 5 edit a file someone else wrote and will read as a diff. The whole
+instrumentation is three or four lines. **The comments about it must not outnumber it.**
+
+- **One line, and only where the code cannot say it itself.** `tracer = AgentX.from_env().tracer`
+  explains itself. `Path(__file__)` where a bare `".env.agentx"` would look correct does not -
+  so one clause, on the trap: `# absolute: a bare name breaks when run from elsewhere`.
+- **No paragraph comments.** This brief's reasoning is why a line is written the way it is; it
+  is not payload for someone's `main.py`. A reason that needs a paragraph goes in the Phase 7
+  report, which is read once, instead of into source, which is maintained forever.
+- **Nothing that dates.** Not the SDK version, not what this skill considered and rejected, not
+  the answer to a question the user has already forgotten they were asked.
+- **Match the file.** A repo whose own code carries no comments does not want four from you.
+
+The same edit, written both ways:
+
+```python
+# Too much: three lines of rationale over two lines of code, none of it about this repo
+# The AgentX key and base URL live in their own file, gitignored and mode 0600. Nothing
+# reads it on its own - it is not .env - and the path is built from __file__ rather than a
+# bare name so `python main.py` from any directory still finds it instead of going untraced.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.agentx")
+
+# Enough: the trap, in one line
+load_dotenv(Path(__file__).resolve().parents[1] / ".env.agentx")   # absolute: any cwd works
+```
+
+Three or four comments across the entire diff is normal. Past that, the diff is arguing with
+the reader.
+
 ## Phase 2 - One span where the run begins
 
 Wrap the handler body, not the framework and not the whole file.
@@ -417,10 +448,17 @@ Say, in this order:
    asked for tracing.
 6. What the two verification passes returned - that the connection check reached the engine,
    and the `--check` verdicts on the agent's own run - and the URL where the traces are.
+7. **The next command, as an invitation: `/agentx:run-eval`.** Two lines at the very end, no
+   more. Traces say what the agent did and what it cost; an evaluation says whether the
+   answers were any good. Say that it builds the dataset itself when the repo has none - a
+   template, a CSV, or cases curated from the runs just recorded - so there is nothing to
+   prepare first, and stop there. Offer it once; a declined or ignored offer is not repeated.
 
-Then the payoff worth naming: **an evaluation result that carries a `traceId` is judged
-against the agent's real execution path**, and one that does not is judged on answer text
-alone. A judge working from text alone cannot tell a retrieval-backed citation from an
-invented one, and reliably concludes the agent has no working retrieval - a finding about the
-wiring, not the agent. If the repo has an evaluation harness, trace its runs with `sync=True`
-and attach `span.trace_id` to each result. That is what makes the two halves one picture.
+Then the payoff, in a sentence, because it is what the next command buys: **an evaluation
+result that carries a `traceId` is judged against the agent's real execution path**, and one
+that does not is judged on answer text alone. A judge working from text alone cannot tell a
+retrieval-backed citation from an invented one, and reliably concludes the agent has no
+working retrieval - a finding about the wiring, not the agent. `/agentx:run-eval` writes a
+harness that attaches the id for every case; a harness the repo already has needs the same two
+things by hand - `sync=True` on the span, and `span.trace_id` read after the `with` block onto
+each result. That is what makes the two halves one picture.
