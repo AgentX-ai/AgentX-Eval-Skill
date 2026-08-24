@@ -390,6 +390,16 @@ path, so part of the movement between the runs is the repair rather than the
 agent. That is a real caveat on the comparison and the reader should not have to
 work it out.
 
+### Keep the comments short
+
+The author has to read this diff on their own agent. One comment where the code cannot say
+it itself, none where it can, and no paragraph of rationale: the reasoning belongs in
+`eval-analysis/mapping-<EVAL_ID>.md`, which is the record of this triage and is read once,
+not in source that is maintained forever. Do not annotate a line with the question it fixed,
+the rating it scored or the recommendation number it came from - the mapping table already
+carries all three, and in code they go stale the moment the next run happens. Match the
+file: a repo whose own code carries no comments does not want four from you.
+
 ### Two specifics worth getting right
 
 **Bump the version tag in code.** Most harnesses carry a prompt or config version

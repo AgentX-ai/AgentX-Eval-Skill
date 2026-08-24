@@ -71,7 +71,9 @@ the picker.
 `eval/run_eval.py`, committed. This file *is* the evaluation's definition: the ids are
 inline because `/eval-fix`'s re-run executes this exact file to produce a comparable v2.
 
-The shape, adapted to the repo (names from Phase 0):
+The shape, adapted to the repo (names from Phase 0). Keep its comment density as well as
+its lines - one comment where a line is not self-evident, none where it is. The reasoning
+lives in this brief; the harness does not restate it:
 
 ```python
 """Evaluation harness for <agent>. Written by the run-eval skill; committed so a

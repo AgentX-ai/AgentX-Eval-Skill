@@ -111,9 +111,15 @@ Generate code against what that prints, not against a README.
 | 4 | Tool calls, where the repo rolls its own |
 | 5 | Deliberately leave the rest alone |
 | 6 | Prove the connection, then run the agent and grade its own traces |
-| 7 | Report what is traced and what is not |
+| 7 | Report what is traced and what is not, then offer `/agentx:run-eval` |
 
 Phase 5 - the list of things to leave alone - is as much of the job as the phases that add code.
+
+**Keep the comments short.** The instrumentation is three or four lines in a file someone else
+wrote; comments about it should not outnumber it. One line where the code cannot say it itself,
+none where it can, and no paragraph of rationale - that goes in the Phase 7 report, which is
+read once, rather than into source, which is maintained forever. The brief's *House style for
+the lines you add* has the same edit written both ways.
 
 **6. Prove it, in two stages. Neither one is optional.**
 
@@ -153,7 +159,8 @@ misconfigured, so the only evidence tracing works is a trace you fetched back.
 **7. Say what is traced, and what is not.** The entry point that became the span, the agent's
 name in the dashboard, the integration wired up and what it does not cover (streaming, in
 particular), what you deliberately left untraced, whether the repo now needs an AgentX key to
-start, and the URL where the traces are.
+start, and the URL where the traces are. Then end on the next command - the last section
+has the wording.
 
 ### The helpers
 
@@ -334,14 +341,23 @@ Before calling it done, check the trace itself rather than the diff:
 
 ---
 
-## The payoff worth naming at the end
+## End the report on the next command
 
-An evaluation result that carries a `traceId` is judged against the agent's **real execution
-path**. One that does not is judged on answer text alone - and a judge working from text alone
+The last line of Phase 7 is an invitation, not a summary: **`/agentx:run-eval`**. Traces say
+what the agent did and what it cost; an evaluation says whether the answers were any good, and
+the traces just proven are what it scores against. Offer it in two lines - the command, and
+that it builds the dataset itself when there is none (a template, a CSV, or cases curated from
+the runs just recorded), so nothing has to be prepared first. Then stop. One offer is an
+onboarding step; a second is a sales pitch.
+
+One sentence of why belongs with it, because it is the payoff of the work just done: **an
+evaluation result that carries a `traceId` is judged against the agent's real execution
+path**, and one that does not is judged on answer text alone - a judge working from text alone
 cannot tell a retrieval-backed citation from an invented one, so it reliably concludes the
-agent has no working retrieval and may be fabricating tool results. That is a finding about the
-wiring, not about the agent.
+agent has no working retrieval and may be fabricating tool results. That is a finding about
+the wiring, not about the agent.
 
-So if the repo has an evaluation harness, trace its runs with `sync=True` and attach
-`span.trace_id` to each result. Tracing and evaluation stop being two features and become one
-picture. The `agentx-eval-fix` skill picks the story up from there.
+`/agentx:run-eval` writes a harness that attaches the id for every case. A harness the repo
+already has needs the same two things by hand: `sync=True` on the span, and `span.trace_id`
+read after the `with` block onto each result. `/agentx:eval-fix` then turns the run that comes
+out into a code change - but name only the next command, not the whole roadmap.
