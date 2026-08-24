@@ -31,6 +31,9 @@ jobs:
       - run: python3 tests/audit_skills.py --skip-sdk
       - run: python3 tests/test_runeval_scripts.py
       - run: python3 tests/test_live_link.py   # SKIPs where no engine is reachable
+      # Same deal: the SDK grew a unified judge-scorer surface the engine does not serve
+      # yet, so this holds the picker's endpoint against whatever engine is reachable.
+      - run: python3 tests/test_live_grader_surface.py
       # The audit is a smoke detector; this proves the detector itself, by breaking a copy
       # of the repo 20 ways (29 with the SDK) and requiring each break to be caught by name.
       - run: python3 tests/test_audit_fires.py
