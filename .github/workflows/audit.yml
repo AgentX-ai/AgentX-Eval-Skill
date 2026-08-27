@@ -13,6 +13,11 @@ on:
     - cron: "17 6 * * 1"
   workflow_dispatch:
 
+# Every job here only reads the checkout - nothing publishes, comments or writes back.
+# Least privilege at the top covers all four rather than repeating it per job.
+permissions:
+  contents: read
+
 jobs:
   structure:
     # No SDK, no network: does the repo agree with itself, on the oldest Python the README

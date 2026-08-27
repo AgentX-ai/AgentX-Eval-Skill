@@ -1,6 +1,0 @@
-{
-  "max_attempts": 1,
-  "pass_threshold": 0.5,
-  "stop_on_pass": false,
-  "score_definition": "overall = mean(security, skill_execution, skill_efficiency, accuracy, goal_accuracy, behavior_check)"
-}

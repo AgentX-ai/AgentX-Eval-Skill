@@ -13,6 +13,14 @@
 # tests/test_policy_keys.py holds every key below against a live scan. SkillSpector
 # embeds line numbers in its taint-flow keys, so an edit above line 77 of pick_eval.py
 # silently stops the suppression matching. That test turns "silently" into a red build.
+#
+# It also holds `accepted_sites` below. A severity override is keyed by RULE, not by
+# file, so downgrading PE3 downgrades it everywhere - including in files added later
+# that nobody reviewed. That is a property of the mechanism, not an observed failure:
+# an attempt to demonstrate it was inconclusive, because SkillSpector did not flag the
+# planted file at all (it reported a per-file `runtime_limit` on it). Which is its own
+# reason to bound the acceptance rather than trust the scanner's reach. skillevaluator
+# ignores this key; tests/test_policy_keys.py does not.
 
 profile: agentx-plugin
 
@@ -32,3 +40,14 @@ severity_overrides:
   # engine it authenticates against. That is what an API client is. The rule asks for
   # credentials never to reach a network sink, which no authenticated client can satisfy.
   "SECURITY.Tainted flow: 'req' from os.environ.get (line 81, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
+
+# Every file each accepted rule is allowed to appear in. A finding of that rule anywhere
+# else is a new risk wearing an old rule's name, and fails tests/test_policy_keys.py.
+accepted_sites:
+  "SECURITY.Credential Access (PE3)":
+    - skills/instrument/scripts/detect_stack.py
+    - skills/eval-fix/references/eval-brief.md
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 77, credential/environment) → urllib.request.urlopen (network output) (TT3)":
+    - skills/run-eval/scripts/pick_eval.py
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 81, credential/environment) → urllib.request.urlopen (network output) (TT3)":
+    - skills/run-eval/scripts/make_dataset.py

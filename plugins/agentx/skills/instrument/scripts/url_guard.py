@@ -17,7 +17,7 @@ catches `ValueError` there. Hard-coding either one would break the other's handl
 Runnable on its own, which is the fastest way to answer "why is my base URL refused":
 
     python3 url_guard.py http://localhost:4700/api/v1     # exit 0, prints the URL
-    python3 url_guard.py file:///etc/passwd               # exit 2, prints the refusal
+    python3 url_guard.py file:///tmp/whatever             # exit 2, prints the refusal
 """
 
 from __future__ import annotations
