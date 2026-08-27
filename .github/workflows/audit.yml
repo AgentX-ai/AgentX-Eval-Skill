@@ -62,8 +62,8 @@ jobs:
   validate:
     # The NVIDIA SkillEvaluator gate. skillevaluator-policy.yaml moves three findings off
     # the blocking path; test_policy_keys.py is what stops that overlay from quietly
-    # covering more than it says. Without the three external scanners the security tier
-    # fails on tooling rather than on this repo, so all three are installed.
+    # covering more than it says. Without the three external scanners the security checks
+    # fail on tooling rather than on this repo, so all three are installed.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -93,10 +93,10 @@ jobs:
       - run: python3 tests/test_policy_keys.py
 
   dedup:
-    # Tier 2 needs an embeddings/LLM provider, so it runs only where a key exists. It
-    # skips rather than fails without one: a fork without the secret should not go red on
-    # something it cannot run. Tier 3 (live agent eval) is deliberately not here - it wants
-    # Docker and ~10 minutes per skill, and it is advisory by design.
+    # The deduplication check needs an embeddings/LLM provider, so it runs only where a
+    # key exists. It skips rather than fails without one: a fork without the secret should
+    # not go red on something it cannot run. The live-agent evaluation is deliberately not
+    # here - it wants Docker and ~10 minutes per skill, and it does not gate.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -107,12 +107,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: uv tool install --python 3.13 "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
-      - name: Tier 2 deduplication
+      - name: Deduplication check
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "$OPENAI_API_KEY" ]; then
-            echo "no OPENAI_API_KEY secret - skipping Tier 2 (set one to enable)"
+            echo "no OPENAI_API_KEY secret - skipping the deduplication check (set one to enable)"
             exit 0
           fi
           for s in eval-fix instrument run-eval; do

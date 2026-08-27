@@ -9,7 +9,7 @@ skills-lock.json
 # validation is a thing you run, not a thing you commit.
 reports/
 
-# Tier 3 writes every trial into <skill>/evals/results/ - trajectories, trial logs and
-# the agent's own transcript, megabytes per run. The task definitions (evals.json) are
-# committed so a run is reproducible; its output never is.
+# The skill evaluator's live-agent run writes every trial into <skill>/evals/results/ -
+# trajectories, trial logs and the agent's own transcript, megabytes per run. The task
+# definitions (evals.json) are committed so a run is reproducible; its output never is.
 plugins/agentx/skills/*/evals/results/
