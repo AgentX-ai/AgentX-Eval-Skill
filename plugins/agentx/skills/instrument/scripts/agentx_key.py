@@ -49,6 +49,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 LOCAL = "http://localhost:4700"
 HOSTED = "https://api.agentx.so"
@@ -59,6 +60,24 @@ TIMEOUT = 15.0
 # ---------------------------------------------------------------------------
 # Address
 # ---------------------------------------------------------------------------
+ALLOWED_SCHEMES = ("http", "https")
+
+
+def checked_url(url: str) -> str:
+    """Refuse anything but http/https before the API key rides along with the request.
+
+    The base URL arrives from the environment, an env file or a flag, and urlopen honours
+    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
+    request into a local file read - and the key is attached either way.
+    """
+    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
+        raise ConnectionError(
+            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
+            "Check --host, --base-url, AGENTX_API_BASE_URL and any env file."
+        )
+    return url
+
+
 def resolve_base_url(host: str | None, base_url: str | None) -> str:
     """Turn whatever the user said into a full `<engine>/api/v1`.
 
@@ -111,13 +130,13 @@ def request(base_url: str, path: str, key: str | None = None, method: str = "GET
     rather than being handed to the caller as a failure.
     """
     payload = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{base_url}{path}", data=payload, method=method)
+    req = urllib.request.Request(checked_url(f"{base_url}{path}"), data=payload, method=method)
     if key:
         req.add_header("x-api-key", key)
     if payload is not None:
         req.add_header("content-type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # nosec B310 - checked_url() allowlists the scheme
             text = resp.read().decode("utf-8", "replace")
             try:
                 return resp.status, json.loads(text)

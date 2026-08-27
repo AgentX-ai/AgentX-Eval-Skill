@@ -11,6 +11,14 @@ description: >-
   use when traces are configured but not arriving, since the SDK fails silently by design. The
   core move is one span where the run begins plus one line of framework auto-instrumentation -
   not a decorator on every function - and it is not finished until a trace has been fetched back.
+version: 2.8.4
+metadata:
+  author: AgentX <marcin@agentx.so>
+  tags:
+    - agentx
+    - tracing
+    - observability
+    - self-host
 ---
 
 # Put an agent's real runs into AgentX

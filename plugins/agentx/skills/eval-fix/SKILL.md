@@ -1,6 +1,6 @@
 ---
 name: eval-fix
-argument-hint: <evaluation-id> [extra instructions]
+argument-hint: "[evaluation-id] [extra instructions]"
 description: >-
   Turn an AgentX self-host evaluation into a triaged code fix and a re-run against
   the same dataset, so a before-and-after comparison means something. Use whenever
@@ -12,6 +12,14 @@ description: >-
   tells me what is wrong with the answers but not what to fix in my code". The core
   move is triaging code-blind judge recommendations against the real source instead
   of applying them literally.
+version: 2.8.4
+metadata:
+  author: AgentX <marcin@agentx.so>
+  tags:
+    - agentx
+    - evaluation
+    - triage
+    - self-host
 ---
 
 # Fix an agent from its evaluation, then re-score it

@@ -51,6 +51,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import List
+from urllib.parse import urlsplit
 
 
 def load_env_file(path: Path) -> dict:
@@ -77,11 +78,29 @@ def load_env_file(path: Path) -> dict:
     return loaded
 
 
+ALLOWED_SCHEMES = ("http", "https")
+
+
+def checked_url(url: str) -> str:
+    """Refuse anything but http/https before the API key rides along with the request.
+
+    The base URL arrives from the environment, an env file or a flag, and urlopen honours
+    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
+    request into a local file read - and the key is attached either way.
+    """
+    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
+        raise ValueError(
+            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
+            "Check AGENTX_API_BASE_URL and any env file."
+        )
+    return url
+
+
 def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:
-    req = urllib.request.Request(f"{base_url.rstrip('/')}/ingest/traces/{trace_id}")
+    req = urllib.request.Request(checked_url(f"{base_url.rstrip('/')}/ingest/traces/{trace_id}"))
     req.add_header("x-api-key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310 - checked_url() allowlists the scheme
             return json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
@@ -89,10 +108,10 @@ def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:
 
 def list_traces(base_url: str, api_key: str, limit: int = 25) -> List[dict]:
     """Recent traces for whichever project this key belongs to."""
-    req = urllib.request.Request(f"{base_url.rstrip('/')}/ingest/traces?limit={limit}")
+    req = urllib.request.Request(checked_url(f"{base_url.rstrip('/')}/ingest/traces?limit={limit}"))
     req.add_header("x-api-key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec B310 - checked_url() allowlists the scheme
             body = json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return []
@@ -274,6 +293,11 @@ def main() -> int:
     print(f"authenticated against {ok.get('base_url')}", file=sys.stderr)
 
     read_url = base_url or "https://api.agentx.so/api/v1"
+    try:
+        checked_url(read_url)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 6
     api_key = os.environ["AGENTX_API_KEY"]
     root = (base_url or "").replace("/api/v1", "")
 
