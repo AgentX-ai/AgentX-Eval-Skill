@@ -521,8 +521,8 @@ guarantees the next reader misdiagnoses a healthy run.
 Verify the accessor before you commit, which costs nothing and needs no run:
 
 ```bash
-curl -s "$AGENTX_API_BASE_URL/evaluate/list?limit=1" -H "x-api-key: $AGENTX_API_KEY" \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['evaluations'][0]['liveStatistics'])"
+curl -s "$AGENTX_API_BASE_URL/evaluate/list?limit=1" -H "x-api-key: $AGENTX_API_KEY" -o eval-list.json
+python3 -c "import json; print(json.load(open('eval-list.json'))['evaluations'][0]['liveStatistics'])"
 ```
 
 ### Attach a trace to every result

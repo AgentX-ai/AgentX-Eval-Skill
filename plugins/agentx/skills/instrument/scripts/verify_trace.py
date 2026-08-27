@@ -55,7 +55,7 @@ from urllib.parse import urlsplit
 
 
 def load_env_file(path: Path) -> dict:
-    """Minimal .env reader - no dependency, and deferring to a real environment variable.
+    """Minimal env-file reader - no dependency, and deferring to a real environment variable.
 
     Deference matters: in production the platform sets AGENTX_API_KEY itself, and a local
     file that overrode it would quietly redirect production traces to a developer's project.

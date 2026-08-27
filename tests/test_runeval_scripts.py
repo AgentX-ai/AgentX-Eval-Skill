@@ -13,6 +13,11 @@ fails its assertion - the guard and the offline-ness are the same mechanism.
 import json
 import subprocess
 import sys
+
+# This file imports pick_eval to test its arithmetic. Without this, that import
+# drops a __pycache__/ inside the plugin - which the NVIDIA scanner reports as
+# shipped bytecode (HIGH, SC8). The suite must not dirty what it validates.
+sys.dont_write_bytecode = True
 import tempfile
 from pathlib import Path
 

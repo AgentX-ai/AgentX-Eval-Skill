@@ -211,7 +211,7 @@ def fenced_python(text: str) -> str:
     return "\n".join(re.findall(r"```(?:python|py)\n(.*?)```", text, re.S))
 
 
-def check_sdk() -> None:
+def check_sdk() -> bool:
     try:
         import agentx  # noqa: F401
         from agentx.tracing.tracer import Tracer, _TraceSpan
@@ -219,7 +219,7 @@ def check_sdk() -> None:
     except ImportError:
         notes.append("agentx-python is not installed - SDK checks skipped "
                      '(pip install "agentx-python[langchain]" to run them)')
-        return
+        return False
 
     notes.append(f"SDK checks ran against agentx-python {VERSION}")
     docs = {md: md.read_text() for md in sorted(SKILLS.rglob("*.md"))}
@@ -263,6 +263,7 @@ def check_sdk() -> None:
             fail("docs", f"pass tracer.trace({keyword}=...), which is not a parameter")
 
     check_evaluations_surface()
+    return True
 
 
 # --------------------------------------------------------------------------------------
@@ -507,12 +508,17 @@ def main() -> int:
     check_brief_skeleton()
     if args.skip_sdk:
         notes.append("SDK checks skipped (--skip-sdk)")
+        sdk_ran = False
     else:
-        check_sdk()
+        sdk_ran = check_sdk()
 
+    # The SDK floors guard the SDK sweeps, so they only mean anything when those sweeps
+    # ran. Keying the exemption on --skip-sdk alone made the docstring's "runs anywhere"
+    # false: without agentx-python the audit skipped the checks, correctly said so, then
+    # failed on the floor for the checks it had just skipped.
     sdk_floors = {"fenced imports", "sdk symbols", "harness call sites"}
     for what, floor in FLOORS.items():
-        if args.skip_sdk and what in sdk_floors:
+        if not sdk_ran and what in sdk_floors:
             continue
         if stats[what] < floor:
             fail("audit", f"swept only {stats[what]} {what} (floor {floor}) - "
