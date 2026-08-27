@@ -67,6 +67,9 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
+      # uv drops tool binaries in ~/.local/bin, which is not on the runner's PATH by
+      # default - without this every skillevaluator step below is a command-not-found.
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - run: uv tool install --python 3.13 "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
       # --with setuptools: semgrep imports pkg_resources, which is absent on 3.12+ without
       # it. Lacking it, Code Risk Analysis fails as "Semgrep did not return valid JSON" -
