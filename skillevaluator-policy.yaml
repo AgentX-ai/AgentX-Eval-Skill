@@ -11,7 +11,7 @@
 # were changed in the source rather than written down here.
 #
 # tests/test_policy_keys.py holds every key below against a live scan. SkillSpector
-# embeds line numbers in its taint-flow keys, so an edit above line 90 of pick_eval.py
+# embeds line numbers in its taint-flow keys, so an edit above line 77 of pick_eval.py
 # silently stops the suppression matching. That test turns "silently" into a red build.
 
 profile: agentx-plugin
@@ -26,9 +26,9 @@ severity_overrides:
   # The project API key is read from the environment and sent as `x-api-key` to the
   # engine it authenticates against. That is what an API client is. The rule asks for
   # credentials never to reach a network sink, which no authenticated client can satisfy.
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 90, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 77, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
 
   # The project API key is read from the environment and sent as `x-api-key` to the
   # engine it authenticates against. That is what an API client is. The rule asks for
   # credentials never to reach a network sink, which no authenticated client can satisfy.
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 94, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 81, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium

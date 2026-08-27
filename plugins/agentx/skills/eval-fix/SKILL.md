@@ -200,20 +200,11 @@ spending a row on them.
 
 ### Which rubric actually graded the run
 
-Self-host splits the grading surface across two objects, and reading the wrong one
-is how a triage rejects a good recommendation.
-
-- **The criteria** come from the run's `evaluationSettings`. If the run named a
-  standalone grading config, that config's criteria apply and the dataset's own
-  criteria were never consulted.
-- **`expectedResults` and `judgeGuideline`** always come from the dataset's
-  questions, whichever config supplied the criteria.
-- **The judge prompt and judge model** live only on the grading config.
-
-`fetch_analysis.py` resolves this for you and labels the export's Grading criteria
-section with where each half came from, printing the dataset's overridden criteria
-separately when they differ. If you read the criteria off the dataset by hand,
-check that first.
+Self-host splits the grading surface across two objects, and reading the wrong one is how a
+triage rejects a good recommendation: the **criteria** come from the run's grading config,
+which may be a standalone one that overrode the dataset's, while **`expectedResults` and
+`judgeGuideline`** always come from the dataset. `fetch_analysis.py` resolves it and labels
+each half in the export - Phase 1 of the triage brief has what to do when they disagree.
 
 ## The workflow
 

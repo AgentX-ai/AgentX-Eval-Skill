@@ -86,3 +86,31 @@ jobs:
             skillevaluator validate "./plugins/agentx/skills/$s" --no-dedup --policy skillevaluator-policy.yaml
           done
       - run: python3 tests/test_policy_keys.py
+
+  dedup:
+    # Tier 2 needs an embeddings/LLM provider, so it runs only where a key exists. It
+    # skips rather than fails without one: a fork without the secret should not go red on
+    # something it cannot run. Tier 3 (live agent eval) is deliberately not here - it wants
+    # Docker and ~10 minutes per skill, and it is advisory by design.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: uv tool install --python 3.13 "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
+      - name: Tier 2 deduplication
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "no OPENAI_API_KEY secret - skipping Tier 2 (set one to enable)"
+            exit 0
+          fi
+          for s in eval-fix instrument run-eval; do
+            skillevaluator validate "./plugins/agentx/skills/$s" \
+              --policy skillevaluator-policy.yaml
+          done

@@ -51,7 +51,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import List
-from urllib.parse import urlsplit
+from url_guard import checked_url as _checked
 
 
 def load_env_file(path: Path) -> dict:
@@ -78,22 +78,9 @@ def load_env_file(path: Path) -> dict:
     return loaded
 
 
-ALLOWED_SCHEMES = ("http", "https")
-
-
 def checked_url(url: str) -> str:
-    """Refuse anything but http/https before the API key rides along with the request.
-
-    The base URL arrives from the environment, an env file or a flag, and urlopen honours
-    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
-    request into a local file read - and the key is attached either way.
-    """
-    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
-        raise ValueError(
-            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
-            "Check AGENTX_API_BASE_URL and any env file."
-        )
-    return url
+    """main() catches ValueError at the boundary where the read URL is resolved."""
+    return _checked(url, raises=ValueError)
 
 
 def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:

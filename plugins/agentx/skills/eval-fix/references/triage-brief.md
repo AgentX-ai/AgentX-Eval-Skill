@@ -496,8 +496,9 @@ for r in run["results"]:             # rating, justification, questionText,
     ...                              # expectedResults, codeScorerResults, similarity
 ```
 
-`liveStatistics` is recomputed from the stored ratings on every read, so it is
-the authoritative number and needs no cross-check against anything else.
+`liveStatistics` is recomputed from the stored ratings on every read, which is
+why it is the number to quote; `references/eval-brief.md` covers the one case
+where the analysis block beside it can be stale.
 
 **Do not wrap that lookup in a bare `except`.** If it cannot read the ratings,
 the tail must say so loudly in the log. Two separate triages hid this lookup

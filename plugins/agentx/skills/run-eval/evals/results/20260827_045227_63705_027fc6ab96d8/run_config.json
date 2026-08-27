@@ -1,0 +1,53 @@
+{
+  "config_file": "none",
+  "harbor": {
+    "environment": {
+      "value": "docker",
+      "source": "CLI"
+    },
+    "n_attempts": 1,
+    "stop_on_pass": false,
+    "n_concurrent": 4,
+    "timeout_multiplier": 1.0,
+    "base_image_mode": "disabled",
+    "jobs_retained": false
+  },
+  "provider": {
+    "name": "openai",
+    "model": "gpt-5.6-sol"
+  },
+  "judge": {
+    "enabled": true,
+    "provider": "openai",
+    "model": "gpt-5.6-sol",
+    "source": "provider default",
+    "override_applied": false,
+    "catalog_verification": "verified"
+  },
+  "credential_validation": {
+    "status": "verified",
+    "targets": [
+      {
+        "labels": [
+          "codex",
+          "standard grader"
+        ],
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "status": "verified",
+        "detail": "model gpt-5.6-sol is available"
+      }
+    ]
+  },
+  "task_source": "evals_json",
+  "grading": {
+    "mode": "default"
+  },
+  "agents": {
+    "codex": {
+      "agent": "codex",
+      "model": "gpt-5.6-sol",
+      "source": "public provider default"
+    }
+  }
+}

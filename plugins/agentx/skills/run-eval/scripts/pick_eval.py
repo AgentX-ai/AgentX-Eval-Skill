@@ -27,7 +27,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from urllib.parse import urlsplit
+
+from url_guard import checked_url
 
 DEFAULT_BASE = "http://localhost:4700/api/v1"
 
@@ -70,24 +71,10 @@ def resolve_auth(env_file: str) -> tuple[str, str]:
     return key, base
 
 
-ALLOWED_SCHEMES = ("http", "https")
-
-
-def checked_url(url: str) -> str:
-    """Refuse anything but http/https before the API key rides along with the request.
-
-    The base URL arrives from the environment, an env file or a flag, and urlopen honours
-    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
-    request into a local file read - and the key is attached either way.
-    """
-    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
-        die(f"refusing to send credentials to {url}: only http:// and https:// are allowed. "
-            "Check AGENTX_API_BASE_URL and any env file.")
-    return url
 
 
 def get(base: str, key: str, path: str):
-    req = urllib.request.Request(checked_url(base + path), headers={"x-api-key": key})
+    req = urllib.request.Request(checked_url(base + path, die), headers={"x-api-key": key})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310 - checked_url() allowlists the scheme
             raw = resp.read().decode("utf-8")

@@ -192,49 +192,21 @@ answer, not a mistake to correct.**
 
 `agentx_key.py` opens with one unauthenticated call to `/auth/config`, and that single answer
 decides everything downstream: which engine this is, whether a key can be had without asking,
-and **whether the user gets to choose a project at all**.
+and **whether the user gets to choose a project at all**. The script reports which case it is
+on, in words, on its first two lines of stderr. §1a of the brief has the three fields to read
+off `--json` and the engine modes behind them.
 
-| Engine | `/auth/config` says | Key without asking? | Choose a project? |
-|---|---|---|---|
-| self-host, `AGENTX_AUTH=disabled` (the default) | `mode: disabled` **plus the default project's key** | yes, that key | **yes** - `/projects` returns every project with its key |
-| self-host, `AGENTX_AUTH=enabled` | `mode: enabled`, no key | no | no - listing needs a signed-in session, so the dashboard picks |
-| hosted (`api.agentx.so`) | no such route | no | no - the key selects the workspace on its own |
+**When projects can be listed, ask - do not just take the default.** This is an
+AskUserQuestion, and it is the one place the user's intent cannot be inferred. The key *is*
+the project selector: every trace lands in exactly one project, the one whose key sent it, and
+is invisible under every other key. Defaulting silently puts a month of a production agent's
+traffic somewhere the user did not choose, and there is no move command. §1a has the options to
+build, including the two that are easy to miss - the project the repo's evaluations already
+use, and "a new project for this app", which writes a row the engine cannot delete.
 
-The script reports which row it is on, in words, on its first two lines of stderr.
-
-### When projects can be listed, ask - do not just take the default
-
-**This is an AskUserQuestion, and it is the one place the user's intent cannot be inferred.**
-The key *is* the project selector: every trace lands in exactly one project, the one whose key
-sent it, and is invisible under every other key. Defaulting silently puts a month of a
-production agent's traffic somewhere the user did not choose, and there is no move command.
-
-Run the script once with `--json` - it returns the engine's verdict and the project list in the
-same call - then ask, with the engine's default marked as such:
-
-```bash
-python3 <skill>/scripts/agentx_key.py --host <address> --json --limit 8
-```
-
-Build the options from `projects[]`: name, and `(default)` where `isDefault`. Two more things
-belong in that question:
-
-- **If the repo already runs AgentX evaluations, recommend that project** and say why in the
-  option description - traces and runs in different projects never appear next to each other,
-  which defeats most of the reason to have both. `detect_stack.py` tells you when that is the
-  case.
-- **Offer "a new project for this app"** when the engine is self-host in disabled mode, since
-  `--create-project <name>` works there without credentials. Say in the description that it
-  **writes a project row the engine cannot delete** - that is a real consequence, not a
-  footnote, and it belongs where the user is deciding.
-
-Then pass the answer through: `--write-env .env.agentx --project <id>`. Prefer the id; project
-names are not unique on self-host, and the script refuses an ambiguous name rather than
-guessing.
-
-**When projects cannot be listed, do not ask.** Say in one line which row of the table you are
-on and that the key already fixes the destination, then move on. A question the user cannot act
-on is worse than no question.
+**When projects cannot be listed, do not ask.** Say in one line which case you are on and that
+the key already fixes the destination, then move on. A question the user cannot act on is worse
+than no question.
 
 `references/preflight-brief.md` names the two traps in key resolution:
 `~/.agentx/config.json` **records whichever engine last ran on this machine**, and the
@@ -315,21 +287,11 @@ Before calling it done, check the trace itself rather than the diff:
 
 ## End the report on the next command
 
-The last line of Phase 7 is an invitation, not a summary: **`/agentx:run-eval`**. Traces say
-what the agent did and what it cost; an evaluation says whether the answers were any good, and
-the traces just proven are what it scores against. Offer it in two lines - the command, and
-that it builds the dataset itself when there is none (a template, a CSV, or cases curated from
-the runs just recorded), so nothing has to be prepared first. Then stop. One offer is an
-onboarding step; a second is a sales pitch.
+The last line of Phase 7 is an invitation, not a summary: **`/agentx:run-eval`**. Two lines -
+the command, and that it builds the dataset itself when the repo has none - then stop. One
+offer is an onboarding step; a second is a sales pitch.
 
-One sentence of why belongs with it, because it is the payoff of the work just done: **an
-evaluation result that carries a `traceId` is judged against the agent's real execution
-path**, and one that does not is judged on answer text alone - a judge working from text alone
-cannot tell a retrieval-backed citation from an invented one, so it reliably concludes the
-agent has no working retrieval and may be fabricating tool results. That is a finding about
-the wiring, not about the agent.
-
-`/agentx:run-eval` writes a harness that attaches the id for every case. A harness the repo
-already has needs the same two things by hand: `sync=True` on the span, and `span.trace_id`
-read after the `with` block onto each result. `/agentx:eval-fix` then turns the run that comes
-out into a code change - but name only the next command, not the whole roadmap.
+It is worth offering because it is the payoff of the work just done: an evaluation whose
+results carry a `traceId` is judged against the agent's real execution path rather than its
+answer text. Phase 7 of the brief has the sentence to say it in, and what a run without those
+ids concludes instead.

@@ -34,7 +34,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+
+from url_guard import checked_url
 
 DEFAULT_BASE = "http://localhost:4700/api/v1"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -73,26 +74,12 @@ def resolve_auth(env_file: str) -> tuple[str, str]:
     return key, base
 
 
-ALLOWED_SCHEMES = ("http", "https")
-
-
-def checked_url(url: str) -> str:
-    """Refuse anything but http/https before the API key rides along with the request.
-
-    The base URL arrives from the environment, an env file or a flag, and urlopen honours
-    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
-    request into a local file read - and the key is attached either way.
-    """
-    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
-        die(f"refusing to send credentials to {url}: only http:// and https:// are allowed. "
-            "Check AGENTX_API_BASE_URL and any env file.")
-    return url
 
 
 def call(base: str, key: str, method: str, path: str, payload: dict | None = None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
-        checked_url(base + path),
+        checked_url(base + path, die),
         data=data,
         method=method,
         headers={"x-api-key": key, "Content-Type": "application/json"},

@@ -49,7 +49,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from urllib.parse import urlsplit
+from url_guard import checked_url as _checked
 
 LOCAL = "http://localhost:4700"
 HOSTED = "https://api.agentx.so"
@@ -60,22 +60,10 @@ TIMEOUT = 15.0
 # ---------------------------------------------------------------------------
 # Address
 # ---------------------------------------------------------------------------
-ALLOWED_SCHEMES = ("http", "https")
-
-
 def checked_url(url: str) -> str:
-    """Refuse anything but http/https before the API key rides along with the request.
-
-    The base URL arrives from the environment, an env file or a flag, and urlopen honours
-    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
-    request into a local file read - and the key is attached either way.
-    """
-    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
-        raise ConnectionError(
-            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
-            "Check --host, --base-url, AGENTX_API_BASE_URL and any env file."
-        )
-    return url
+    """This script reports a bad address the same way as an unreachable one."""
+    return _checked(url, raises=ConnectionError,
+                    hint="--host, --base-url, AGENTX_API_BASE_URL and any env file")
 
 
 def resolve_base_url(host: str | None, base_url: str | None) -> str:
