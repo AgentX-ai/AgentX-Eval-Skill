@@ -105,7 +105,7 @@ def report_host() -> str:
 def adapter(case):
     # reset per-case state here, if Phase 0 found any (histories, sessions)
     with config.tracer.trace(
-        "<agent-name>", input={"query": case.query}, sync=True, monitor=False,
+        "<agent-slug>", input={"query": case.query}, sync=True, monitor=False,
     ) as span:
         answer = main.<callable>(case.query)
         span.output = answer
@@ -118,7 +118,7 @@ def main_entry() -> None:
 
     run = eval_client.evaluations.run(
         dataset_id=DATASET_ID,
-        subject={"kind": "custom_agent", "displayName": "<agent-name>"},
+        subject={"kind": "custom_agent", "displayName": "<run-label>"},
         **({"evaluation_settings_id": SETTINGS_ID} if SETTINGS_ID else {}),
     ).execute(adapter).finalize()
 
@@ -147,6 +147,14 @@ if __name__ == "__main__":
 for `main_question` (or a bare `q.query`) inside the adapter, and you get empty strings
 that look exactly like an empty dataset. Nested on the dataset side, flat on the adapter
 side; the boundary is `adapter()` itself.
+
+`<agent-slug>` and `<run-label>` have different lifetimes. The slug is the span name, and
+the engine resolves it to the **oldest agent already registered under it** - so it must be the
+name this repo already traces under, the one `/agentx:instrument` set. A fresh one registers a
+second agent and strands the run's traces from the history `/agentx:eval-fix` compares against.
+The label is the Evaluate row, and it is the one that moves: carry the lever that changed -
+`Support Agent (gpt-4o, prompt v2)` - so consecutive runs read as a series. What neither may be
+is a name belonging to some other agent; the Evaluate list then reads as that agent's regression.
 
 `subject.framework` is a **strict Literal** in the SDK - an off-list value fails pydantic
 validation before any run is created. Valid: `raw_python`, `openai`, `anthropic`, `google`,
