@@ -4,3 +4,12 @@ __pycache__/
 # from. In this one that is a duplicate of the source, never something to commit.
 .agents/skills/
 skills-lock.json
+
+# skillevaluator/skillspector write their HTML+JSON reports here. The NVIDIA
+# validation is a thing you run, not a thing you commit.
+reports/
+
+# The skill evaluator's live-agent run writes every trial into <skill>/evals/results/ -
+# trajectories, trial logs and the agent's own transcript, megabytes per run. The task
+# definitions (evals.json) are committed so a run is reproducible; its output never is.
+plugins/agentx/skills/*/evals/results/

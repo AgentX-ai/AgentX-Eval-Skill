@@ -105,10 +105,13 @@ Most harnesses call `load_dotenv()` at import, so a `.env` silently overrides bo
 checks above:
 
 ```bash
-[ -f .env ] && grep -E 'AGENTX_|API_BASE_URL|_URL=|DATASET' .env || echo "no .env"
+[ -f .env ] && grep -E 'AGENTX_|API_BASE_URL|_URL=|DATASET' .env \
+  | sed -E 's/(KEY|TOKEN|SECRET)=.*/\1=***/' || echo "none"
 ```
 
-The danger is a **stale host**, not the file's existence. Committed `.env.example`
+The danger is a **stale host**, not the file's existence - which is why the values
+are masked: the host is the answer, and `AGENTX_` also matches `AGENTX_API_KEY`, so
+the unmasked grep put the project key in the transcript. Committed `.env.example`
 files are exactly where dead URLs survive, because nothing ever fails when an
 example is wrong, and anything that copies the example into place inherits the
 rot. A `.env` still pointing at the hosted API is the specific rot to look for

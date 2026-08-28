@@ -49,6 +49,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from url_guard import checked_url as _checked
 
 LOCAL = "http://localhost:4700"
 HOSTED = "https://api.agentx.so"
@@ -59,6 +60,12 @@ TIMEOUT = 15.0
 # ---------------------------------------------------------------------------
 # Address
 # ---------------------------------------------------------------------------
+def checked_url(url: str) -> str:
+    """This script reports a bad address the same way as an unreachable one."""
+    return _checked(url, raises=ConnectionError,
+                    hint="--host, --base-url, AGENTX_API_BASE_URL and any env file")
+
+
 def resolve_base_url(host: str | None, base_url: str | None) -> str:
     """Turn whatever the user said into a full `<engine>/api/v1`.
 
@@ -111,13 +118,13 @@ def request(base_url: str, path: str, key: str | None = None, method: str = "GET
     rather than being handed to the caller as a failure.
     """
     payload = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(f"{base_url}{path}", data=payload, method=method)
+    req = urllib.request.Request(checked_url(f"{base_url}{path}"), data=payload, method=method)
     if key:
         req.add_header("x-api-key", key)
     if payload is not None:
         req.add_header("content-type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # nosec B310 - checked_url() allowlists the scheme
             text = resp.read().decode("utf-8", "replace")
             try:
                 return resp.status, json.loads(text)

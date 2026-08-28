@@ -111,6 +111,24 @@ class EngineError(RuntimeError):
     """Anything that means "stop and tell the user", with the fix in the message."""
 
 
+ALLOWED_SCHEMES = ("http", "https")
+
+
+def checked_url(url: str) -> str:
+    """Refuse anything but http/https before the API key rides along with the request.
+
+    The base URL arrives from the environment, an env file or a flag, and urlopen honours
+    file:, ftp: and custom schemes as readily as http. Unchecked, a mistyped base turns a
+    request into a local file read - and the key is attached either way.
+    """
+    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
+        raise EngineError(
+            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
+            "Check --host, AGENTX_API_BASE_URL and any env file."
+        )
+    return url
+
+
 # ---------------------------------------------------------------------------
 # Connecting
 # ---------------------------------------------------------------------------
@@ -327,7 +345,7 @@ def _request(
     body: Any = None,
     timeout: float = 30.0,
 ) -> Any:
-    url = f"{base_url}{path}"
+    url = checked_url(f"{base_url}{path}")
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if api_key:
@@ -336,7 +354,7 @@ def _request(
         req.add_header("Content-Type", "application/json")
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 - checked_url() allowlists the scheme
             raw = resp.read().decode("utf-8")
         return json.loads(raw) if raw else None
     except urllib.error.HTTPError as exc:

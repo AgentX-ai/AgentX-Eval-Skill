@@ -35,6 +35,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from url_guard import checked_url
+
 DEFAULT_BASE = "http://localhost:4700/api/v1"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
@@ -72,16 +74,18 @@ def resolve_auth(env_file: str) -> tuple[str, str]:
     return key, base
 
 
+
+
 def call(base: str, key: str, method: str, path: str, payload: dict | None = None):
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(
-        base + path,
+        checked_url(base + path, die),
         data=data,
         method=method,
         headers={"x-api-key": key, "Content-Type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:  # nosec B310 - checked_url() allowlists the scheme
             raw = resp.read().decode("utf-8")
             try:
                 return resp.status, json.loads(raw)

@@ -210,8 +210,8 @@ The same edit, written both ways:
 ```python
 # Too much: three lines of rationale over two lines of code, none of it about this repo
 # The AgentX key and base URL live in their own file, gitignored and mode 0600. Nothing
-# reads it on its own - it is not .env - and the path is built from __file__ rather than a
-# bare name so `python main.py` from any directory still finds it instead of going untraced.
+# reads it on its own, and the path is built from __file__ rather than a bare name, so
+# `python main.py` from any directory still finds it instead of going untraced.
 load_dotenv(Path(__file__).resolve().parents[1] / ".env.agentx")
 
 # Enough: the trap, in one line

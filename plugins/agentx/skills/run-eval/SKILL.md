@@ -11,6 +11,14 @@ description: >-
   agent", "create a dataset", "test my agent against a dataset", or has traced runs and
   wants to know how good they are. The deliverable is a committed eval harness plus a
   finished, analyzed run - the exact thing /eval-fix picks up.
+version: 2.8.4
+metadata:
+  author: AgentX <marcin@agentx.so>
+  tags:
+    - agentx
+    - evaluation
+    - dataset
+    - self-host
 ---
 
 # Run an evaluation of the agent in this repo

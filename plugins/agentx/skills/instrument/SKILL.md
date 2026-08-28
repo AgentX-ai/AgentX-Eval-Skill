@@ -11,6 +11,14 @@ description: >-
   use when traces are configured but not arriving, since the SDK fails silently by design. The
   core move is one span where the run begins plus one line of framework auto-instrumentation -
   not a decorator on every function - and it is not finished until a trace has been fetched back.
+version: 2.8.4
+metadata:
+  author: AgentX <marcin@agentx.so>
+  tags:
+    - agentx
+    - tracing
+    - observability
+    - self-host
 ---
 
 # Put an agent's real runs into AgentX
@@ -60,34 +68,13 @@ begins at, and whether anything is already traced. Then:
   makes every trace a fragment or a duplicate. One obvious candidate means no question.
 
 **3. Offer git, then carry on either way.** `detect_stack.py` reports `git` for this.
-**No git is not a blocker and never changes what gets instrumented** - the traces are just as
-real either way. It is worth one question only because tracing edits someone else's source, and
-a repo gives them a diff to read it in and a way to put it back.
-
-| What it reports | What to do |
-|---|---|
-| `NOT A REPOSITORY` | Offer `git init` in one AskUserQuestion, then proceed on whichever answer. |
-| `repository with no commits` | Same offer, minus the `git init` - there is still nothing to diff against. |
-| `uncommitted changes present` | Do not ask. Say it in one line, so the instrumentation diff is not confused with work already there. |
-| clean repository | Nothing to do. |
-
-Two options, both legitimate, with the consequence written into each:
-
-- **`git init` and commit a baseline** - the instrumentation then arrives as a diff someone can
-  read, `git checkout .` undoes it, and a branch or a PR is possible later.
-- **Carry on without** - say once, in one sentence, that the edits will land in the working tree
-  with nothing to compare against and no undo. Then do the whole job anyway.
-
-**Ask once and move on.** If the answer is no, ambiguous, or slow in coming, instrument the repo.
-A user who declined git wanted tracing, not a conversation about version control, and stopping to
-insist is worse than the missing diff. `.env.agentx` is written with its `.gitignore` entry
-regardless, so a later `git init` does not expose the key.
-
-**If they do commit a baseline, look at what goes into it first.** `git status --short`. A first
-commit made with `git add -A` in a directory nobody has ever gitignored is how `.env`, `.venv/`,
-`node_modules/` and a set of credentials enter someone's history - and history is the one place a
-mistake does not simply get deleted. Anything of that shape goes into `.gitignore` first, and say
-which ones you added.
+**No git is not a blocker and never changes what gets instrumented** - it is worth one
+AskUserQuestion only because tracing edits someone else's source. Offer `git init` plus a
+baseline commit where there is no repository; say uncommitted changes out loud rather than
+asking. **Ask once and move on** - if the answer is no, ambiguous, or slow, instrument the
+repo anyway. `.env.agentx` is written with its `.gitignore` entry regardless, so a later
+`git init` does not expose the key. `references/preflight-brief.md` has the per-state table
+and the `git add -A` hazard to check before any baseline commit.
 
 **4. Key, dependency, client.** Pick the project (see below), install `agentx-python` with the
 extra `detect_stack.py` named, and add it to the repo's manifest. Then initialise the SDK **once**,
@@ -205,59 +192,26 @@ answer, not a mistake to correct.**
 
 `agentx_key.py` opens with one unauthenticated call to `/auth/config`, and that single answer
 decides everything downstream: which engine this is, whether a key can be had without asking,
-and **whether the user gets to choose a project at all**.
+and **whether the user gets to choose a project at all**. The script reports which case it is
+on, in words, on its first two lines of stderr. §1a of the brief has the three fields to read
+off `--json` and the engine modes behind them.
 
-| Engine | `/auth/config` says | Key without asking? | Choose a project? |
-|---|---|---|---|
-| self-host, `AGENTX_AUTH=disabled` (the default) | `mode: disabled` **plus the default project's key** | yes, that key | **yes** - `/projects` returns every project with its key |
-| self-host, `AGENTX_AUTH=enabled` | `mode: enabled`, no key | no | no - listing needs a signed-in session, so the dashboard picks |
-| hosted (`api.agentx.so`) | no such route | no | no - the key selects the workspace on its own |
+**When projects can be listed, ask - do not just take the default.** This is an
+AskUserQuestion, and it is the one place the user's intent cannot be inferred. The key *is*
+the project selector: every trace lands in exactly one project, the one whose key sent it, and
+is invisible under every other key. Defaulting silently puts a month of a production agent's
+traffic somewhere the user did not choose, and there is no move command. §1a has the options to
+build, including the two that are easy to miss - the project the repo's evaluations already
+use, and "a new project for this app", which writes a row the engine cannot delete.
 
-The script reports which row it is on, in words, on its first two lines of stderr.
+**When projects cannot be listed, do not ask.** Say in one line which case you are on and that
+the key already fixes the destination, then move on. A question the user cannot act on is worse
+than no question.
 
-### When projects can be listed, ask - do not just take the default
-
-**This is an AskUserQuestion, and it is the one place the user's intent cannot be inferred.**
-The key *is* the project selector: every trace lands in exactly one project, the one whose key
-sent it, and is invisible under every other key. Defaulting silently puts a month of a
-production agent's traffic somewhere the user did not choose, and there is no move command.
-
-Run the script once with `--json` - it returns the engine's verdict and the project list in the
-same call - then ask, with the engine's default marked as such:
-
-```bash
-python3 <skill>/scripts/agentx_key.py --host <address> --json --limit 8
-```
-
-Build the options from `projects[]`: name, and `(default)` where `isDefault`. Two more things
-belong in that question:
-
-- **If the repo already runs AgentX evaluations, recommend that project** and say why in the
-  option description - traces and runs in different projects never appear next to each other,
-  which defeats most of the reason to have both. `detect_stack.py` tells you when that is the
-  case.
-- **Offer "a new project for this app"** when the engine is self-host in disabled mode, since
-  `--create-project <name>` works there without credentials. Say in the description that it
-  **writes a project row the engine cannot delete** - that is a real consequence, not a
-  footnote, and it belongs where the user is deciding.
-
-Then pass the answer through: `--write-env .env.agentx --project <id>`. Prefer the id; project
-names are not unique on self-host, and the script refuses an ambiguous name rather than
-guessing.
-
-**When projects cannot be listed, do not ask.** Say in one line which row of the table you are
-on and that the key already fixes the destination, then move on. A question the user cannot act
-on is worse than no question.
-
-### Two traps in key resolution
-
-- **`~/.agentx/config.json` records whichever engine last ran on this machine**, which need not
-  be the engine you are pointing at. A Docker instance keeps its database in its own volume and
-  mints its own keys. Every candidate is verified with a real authenticated read before use, and
-  a stale one is reported as stale rather than written into the project.
-- **The engine's handout is always the *default* project.** Right for a fresh install, wrong for
-  anyone who has already chosen where their data goes - which is exactly why it is last in the
-  resolution order, and why the question above exists.
+`references/preflight-brief.md` names the two traps in key resolution:
+`~/.agentx/config.json` **records whichever engine last ran on this machine**, and the
+engine's handout is always the ***default*** project - which is why it is last in the
+resolution order, and why the question above exists.
 
 **Nothing prints anything derived from a key** - not a masked form, not a hash. Every line
 that might have wanted one already carries the project id, which identifies the project better
@@ -304,22 +258,12 @@ chose.
 <project-interpreter> <skill>/scripts/verify_trace.py --capabilities
 ```
 
-The published package and its documentation are not always in step. Concretely, on PyPI
-0.6.30 the documented `span.add_tool_call(..., success=False, error=...)` does not exist -
-that signature takes only `name`, `input`, `output` and `latency_ms` - so generated code using
-those keywords raises `TypeError` inside the user's agent at the first failed tool call.
-`tracer.trace_tool_call(...)` records the same `success`/`error` fields on every version that
-has it, which is why the brief prefers it everywhere.
-
-One command, before the code. It also confirms which interpreter has the SDK, which is the
-other half of the same question.
-
-**Ask the probe; do not hand-roll `inspect`.** When it does not answer what you need, import
-from the right place: the tracer's internals are in the **`agentx.tracing.tracer`** submodule -
-`Tracer`, `_TraceSpan` - while `agentx.tracing` itself re-exports only `Tracer`, `IngestClient`
-and the CI types. `from agentx.tracing import _TraceSpan` is an `ImportError`, and a step that
-opens with one reads as a broken skill before it has done anything. The same rule covers the
-other helpers: extend the command rather than improvising your own version of it.
+One command, before the code. The published package and its documentation are not always
+in step, and it also confirms which interpreter has the SDK - the other half of the same
+question. **Ask the probe; do not hand-roll `inspect`**, and when it does not answer what
+you need, import from the right place: the tracer's internals are in
+**`agentx.tracing.tracer`**, so `from agentx.tracing import _TraceSpan` is an `ImportError`.
+`references/preflight-brief.md` has the version specifics behind both rules.
 
 ---
 
@@ -343,21 +287,11 @@ Before calling it done, check the trace itself rather than the diff:
 
 ## End the report on the next command
 
-The last line of Phase 7 is an invitation, not a summary: **`/agentx:run-eval`**. Traces say
-what the agent did and what it cost; an evaluation says whether the answers were any good, and
-the traces just proven are what it scores against. Offer it in two lines - the command, and
-that it builds the dataset itself when there is none (a template, a CSV, or cases curated from
-the runs just recorded), so nothing has to be prepared first. Then stop. One offer is an
-onboarding step; a second is a sales pitch.
+The last line of Phase 7 is an invitation, not a summary: **`/agentx:run-eval`**. Two lines -
+the command, and that it builds the dataset itself when the repo has none - then stop. One
+offer is an onboarding step; a second is a sales pitch.
 
-One sentence of why belongs with it, because it is the payoff of the work just done: **an
-evaluation result that carries a `traceId` is judged against the agent's real execution
-path**, and one that does not is judged on answer text alone - a judge working from text alone
-cannot tell a retrieval-backed citation from an invented one, so it reliably concludes the
-agent has no working retrieval and may be fabricating tool results. That is a finding about
-the wiring, not about the agent.
-
-`/agentx:run-eval` writes a harness that attaches the id for every case. A harness the repo
-already has needs the same two things by hand: `sync=True` on the span, and `span.trace_id`
-read after the `with` block onto each result. `/agentx:eval-fix` then turns the run that comes
-out into a code change - but name only the next command, not the whole roadmap.
+It is worth offering because it is the payoff of the work just done: an evaluation whose
+results carry a `traceId` is judged against the agent's real execution path rather than its
+answer text. Phase 7 of the brief has the sentence to say it in, and what a run without those
+ids concludes instead.

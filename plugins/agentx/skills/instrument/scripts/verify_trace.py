@@ -51,10 +51,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import List
+from url_guard import checked_url as _checked
 
 
 def load_env_file(path: Path) -> dict:
-    """Minimal .env reader - no dependency, and deferring to a real environment variable.
+    """Minimal env-file reader - no dependency, and deferring to a real environment variable.
 
     Deference matters: in production the platform sets AGENTX_API_KEY itself, and a local
     file that overrode it would quietly redirect production traces to a developer's project.
@@ -77,11 +78,16 @@ def load_env_file(path: Path) -> dict:
     return loaded
 
 
+def checked_url(url: str) -> str:
+    """main() catches ValueError at the boundary where the read URL is resolved."""
+    return _checked(url, raises=ValueError)
+
+
 def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:
-    req = urllib.request.Request(f"{base_url.rstrip('/')}/ingest/traces/{trace_id}")
+    req = urllib.request.Request(checked_url(f"{base_url.rstrip('/')}/ingest/traces/{trace_id}"))
     req.add_header("x-api-key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310 - checked_url() allowlists the scheme
             return json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return None
@@ -89,10 +95,10 @@ def fetch_trace(base_url: str, api_key: str, trace_id: str) -> dict | None:
 
 def list_traces(base_url: str, api_key: str, limit: int = 25) -> List[dict]:
     """Recent traces for whichever project this key belongs to."""
-    req = urllib.request.Request(f"{base_url.rstrip('/')}/ingest/traces?limit={limit}")
+    req = urllib.request.Request(checked_url(f"{base_url.rstrip('/')}/ingest/traces?limit={limit}"))
     req.add_header("x-api-key", api_key)
     try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec B310 - checked_url() allowlists the scheme
             body = json.loads(resp.read().decode("utf-8", "replace"))
     except (urllib.error.URLError, json.JSONDecodeError):
         return []
@@ -274,6 +280,11 @@ def main() -> int:
     print(f"authenticated against {ok.get('base_url')}", file=sys.stderr)
 
     read_url = base_url or "https://api.agentx.so/api/v1"
+    try:
+        checked_url(read_url)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 6
     api_key = os.environ["AGENTX_API_KEY"]
     root = (base_url or "").replace("/api/v1", "")
 

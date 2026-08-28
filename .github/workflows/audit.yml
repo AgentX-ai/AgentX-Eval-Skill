@@ -13,6 +13,11 @@ on:
     - cron: "17 6 * * 1"
   workflow_dispatch:
 
+# Every job here only reads the checkout - nothing publishes, comments or writes back.
+# Least privilege at the top covers all four rather than repeating it per job.
+permissions:
+  contents: read
+
 jobs:
   structure:
     # No SDK, no network: does the repo agree with itself, on the oldest Python the README
@@ -37,6 +42,9 @@ jobs:
       # The audit is a smoke detector; this proves the detector itself, by breaking a copy
       # of the repo 20 ways (29 with the SDK) and requiring each break to be caught by name.
       - run: python3 tests/test_audit_fires.py
+      # SKIPs where skillevaluator is absent, which is here. The validate job below is
+      # where it actually runs.
+      - run: python3 tests/test_policy_keys.py
 
   sdk:
     # Does the repo still agree with the package the skills generate code against?
@@ -50,3 +58,64 @@ jobs:
       - run: pip install "agentx-python[langchain]"
       - run: python3 tests/audit_skills.py
       - run: python3 tests/test_audit_fires.py
+
+  validate:
+    # The NVIDIA SkillEvaluator gate. skillevaluator-policy.yaml moves three findings off
+    # the blocking path; test_policy_keys.py is what stops that overlay from quietly
+    # covering more than it says. Without the three external scanners the security checks
+    # fail on tooling rather than on this repo, so all three are installed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      # uv drops tool binaries in ~/.local/bin, which is not on the runner's PATH by
+      # default - without this every skillevaluator step below is a command-not-found.
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: uv tool install --python 3.13 "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
+      # --with setuptools: semgrep imports pkg_resources, which is absent on 3.12+ without
+      # it. Lacking it, Code Risk Analysis fails as "Semgrep did not return valid JSON" -
+      # a tooling failure that reads exactly like a repo failure.
+      - run: uv tool install --with setuptools semgrep
+      - run: uv tool install --python 3.13 "skillspector @ git+https://github.com/NVIDIA/SkillSpector.git"
+      - name: gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+      - run: skillevaluator validate ./plugins/agentx --type plugin --no-dedup --policy skillevaluator-policy.yaml
+      - run: |
+          for s in eval-fix instrument run-eval; do
+            skillevaluator validate "./plugins/agentx/skills/$s" --no-dedup --policy skillevaluator-policy.yaml
+          done
+      - run: python3 tests/test_policy_keys.py
+
+  dedup:
+    # The deduplication check needs an embeddings/LLM provider, so it runs only where a
+    # key exists. It skips rather than fails without one: a fork without the secret should
+    # not go red on something it cannot run. The live-agent evaluation is deliberately not
+    # here - it wants Docker and ~10 minutes per skill, and it does not gate.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: uv tool install --python 3.13 "skillevaluator[all] @ git+https://github.com/NVIDIA/SkillEvaluator.git"
+      - name: Deduplication check
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "no OPENAI_API_KEY secret - skipping the deduplication check (set one to enable)"
+            exit 0
+          fi
+          for s in eval-fix instrument run-eval; do
+            skillevaluator validate "./plugins/agentx/skills/$s" \
+              --policy skillevaluator-policy.yaml
+          done
