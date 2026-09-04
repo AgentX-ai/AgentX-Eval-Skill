@@ -26,8 +26,25 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 DEFAULT_BASE = "http://localhost:4700"
+ALLOWED_SCHEMES = {"http", "https"}
+
+
+def checked_url(url: str) -> str:
+    """Refuse anything but http/https before the API key rides along with the request.
+
+    The base URL arrives from the environment or a flag, and urlopen honours file:, ftp: and
+    custom schemes as readily as http. Unchecked, a mistyped base turns a request into a local
+    file read - and the key is attached either way.
+    """
+    if urlsplit(url).scheme not in ALLOWED_SCHEMES:
+        sys.exit(
+            f"refusing to send credentials to {url!r}: only http:// and https:// are allowed. "
+            "Check --host, --base-url and $AGENTX_API_BASE_URL."
+        )
+    return url
 
 
 def resolve_base(base_url: str | None, host: str | None) -> str:
@@ -42,8 +59,10 @@ def resolve_base(base_url: str | None, host: str | None) -> str:
 
 
 def get(base: str, path: str, key: str | None) -> dict:
-    req = urllib.request.Request(f"{base}{path}", headers={"x-api-key": key} if key else {})
-    with urllib.request.urlopen(req, timeout=30) as resp:
+    req = urllib.request.Request(checked_url(f"{base}{path}"))
+    if key:
+        req.add_header("x-api-key", key)
+    with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310 - checked_url() allowlists the scheme
         return json.load(resp)
 
 
@@ -65,12 +84,18 @@ def resolve_key(base: str) -> str:
             candidates.append(handed)
     except (urllib.error.URLError, ValueError):
         pass
+    saw_http_response = False
     for key in candidates:
         try:
             get(base, "/agent-monitoring/improvement-groups", key)
             return key
+        except urllib.error.HTTPError:
+            saw_http_response = True  # the engine answered - this key just isn't accepted
+            continue
         except urllib.error.URLError:
             continue
+    if not saw_http_response:
+        sys.exit(f"No engine answered at {base} - is it running? (HOST/--host pick the address)")
     sys.exit(
         "No working API key. Set AGENTX_API_KEY to the key of the project holding the "
         "confirmed failures (keys are per project - a key from another project sees nothing)."
