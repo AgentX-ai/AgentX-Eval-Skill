@@ -209,8 +209,8 @@ Around the plugin:
 | `tests/audit_skills.py` | Holds the docs against the code they tell an agent to run: every script, flag and SDK symbol a brief names has to exist |
 | `tests/test_audit_fires.py` | Breaks a copy of the repo in twenty-odd ways and requires the audit to catch each one by name |
 | `tests/test_runeval_scripts.py`, `test_live_link.py`, `test_live_grader_surface.py` | The run-eval scripts and the engine endpoints they depend on, live where an engine is reachable |
-| `skillevaluator-policy.yaml`, `tests/test_policy_keys.py` | The NVIDIA SkillEvaluator gate's overlay, and the test that keeps it from quietly covering more than it says |
-| `.github/workflows/audit.yml` | Runs all of the above on push, on PRs, and weekly, so an SDK rename turns the repo red without waiting for a commit |
+| `skillevaluator-policy.yaml`, `tests/test_policy_keys.py` | The overlay for running NVIDIA SkillEvaluator locally, and the test that keeps it from quietly covering more than it says. Not a CI gate: the scanner is unpinned upstream and went red on a commit it had passed |
+| `.github/workflows/audit.yml` | Runs the tests above on push, on PRs, and weekly, so an SDK rename turns the repo red without waiting for a commit |
 
 Full detail on the tracing and evaluation half is in
 [`plugins/agentx/README.md`](plugins/agentx/README.md). Each skill's `SKILL.md` is the
