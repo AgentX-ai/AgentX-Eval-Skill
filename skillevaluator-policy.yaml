@@ -25,29 +25,17 @@
 profile: agentx-plugin
 
 severity_overrides:
-  # Two sites remain, both naming `.env` rather than reading a secret: a SKIP_DIRS entry
-  # in detect_stack.py (a directory the walker refuses to descend into) and the section
-  # of eval-brief.md whose subject IS a stale `.env` host. Removing either would delete
-  # working behaviour or the documentation of a real hazard.
-  "SECURITY.Credential Access (PE3)": medium
+  # (Three earlier entries - Credential Access PE3 and the pick_eval/make_dataset taint
+  # flows - were deleted when the scanner stopped reporting them: tests/test_policy_keys.py
+  # flags stale entries, and an overlay must describe the repo as scanned today.)
 
-  # The project API key is read from the environment and sent as `x-api-key` to the
-  # engine it authenticates against. That is what an API client is. The rule asks for
-  # credentials never to reach a network sink, which no authenticated client can satisfy.
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 77, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
-
-  # The project API key is read from the environment and sent as `x-api-key` to the
-  # engine it authenticates against. That is what an API client is. The rule asks for
-  # credentials never to reach a network sink, which no authenticated client can satisfy.
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 81, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
+  # Same shape, same reasoning, in auto-improve's report fetcher: the key rides x-api-key to
+  # the engine that minted it, and checked_url() has already refused any non-http(s) scheme
+  # before the request exists.
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 62, credential/environment) → urllib.request.urlopen (network output) (TT3)": medium
 
 # Every file each accepted rule is allowed to appear in. A finding of that rule anywhere
 # else is a new risk wearing an old rule's name, and fails tests/test_policy_keys.py.
 accepted_sites:
-  "SECURITY.Credential Access (PE3)":
-    - skills/instrument/scripts/detect_stack.py
-    - skills/eval-fix/references/eval-brief.md
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 77, credential/environment) → urllib.request.urlopen (network output) (TT3)":
-    - skills/run-eval/scripts/pick_eval.py
-  "SECURITY.Tainted flow: 'req' from os.environ.get (line 81, credential/environment) → urllib.request.urlopen (network output) (TT3)":
-    - skills/run-eval/scripts/make_dataset.py
+  "SECURITY.Tainted flow: 'req' from os.environ.get (line 62, credential/environment) → urllib.request.urlopen (network output) (TT3)":
+    - skills/auto-improve/scripts/fetch_report.py
