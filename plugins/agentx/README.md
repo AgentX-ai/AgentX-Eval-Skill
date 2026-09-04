@@ -1,6 +1,6 @@
 # agentx
 
-One plugin, two commands, one loop: get an agent's real runs into
+One plugin, four commands, one loop: get an agent's real runs into
 [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval), then turn what they measure into a
 code fix.
 
@@ -9,6 +9,7 @@ code fix.
 | `/instrument` | Sets a Python agent up on AgentX — key, SDK, one span where the run begins, then traces sent and read back to prove it. Documented below. |
 | `/run-eval` | Evaluates that agent: picks or creates the dataset and grading config, writes the committed harness, runs it, links every result to its trace, and hands over the score, the browser report, and the `/eval-fix` command. |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, and re-runs it on the same dataset. See the [repo README](../../README.md). |
+| `/auto-improve <id>` | Applies an improvement report — production failures a human confirmed in signal review — as triaged fixes to the source. The online counterpart of `/eval-fix`; see the [repo README](../../README.md). |
 
 They are one plugin because they are one story, and the seam between them is the reason to
 have both: an evaluation result carrying a `traceId` is judged against the agent's **real

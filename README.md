@@ -1,6 +1,6 @@
 # AgentX for coding agents
 
-One plugin, three commands, one loop: get an agent's real runs into
+One plugin, four commands, one loop: get an agent's real runs into
 [AgentX](https://github.com/AgentX-ai/AgentX-trace-eval) — the Trace/Evaluate/Monitor engine you
 run yourself — then turn what they measure into a code fix.
 
@@ -9,9 +9,12 @@ run yourself — then turn what they measure into a code fix.
 | `/instrument` | Sets a Python agent up on AgentX: key, SDK, one span where the run begins, then traces sent and read back to prove it |
 | `/run-eval` | Evaluates the agent against a dataset it can also create — templates, a CSV/document, or cases curated from live traces — and leaves the committed harness the re-run needs |
 | `/eval-fix <id>` | Triages an evaluation against the real source, applies what survives, re-runs it on the same dataset |
+| `/auto-improve <id>` | Applies an improvement report — production failures a human confirmed in signal review, clustered into issues — as triaged fixes to the source. The online counterpart of `/eval-fix` |
 
 ```
 /instrument ──► traced runs ──► /run-eval ──► score + analysis ──► /eval-fix ──► v1 vs v2
+                     │
+                     └──► live traffic ──► signals confirmed in review ──► /auto-improve ──► fix
 ```
 
 They are one plugin because they are one story. An evaluation result carrying a `traceId` is
@@ -85,7 +88,7 @@ their references and their scripts.
 
 ## Run it
 
-From inside the repo that holds your agent — both commands read that source.
+From inside the repo that holds your agent — every command reads that source.
 
 ```
 /instrument
@@ -98,6 +101,18 @@ fetching it back by id. It does **not** decorate every function — nesting is a
 span at the entry point plus one line of framework auto-instrumentation is the whole job.
 
 ```
+/run-eval
+/run-eval <dataset-id> [evaluator-id]
+```
+
+With no ids it asks two questions, one for the dataset and one for the grading config, and no
+more. A dataset can be one of the shipped templates, an existing id, a CSV or document of Q&A
+pairs, or cases the engine drafts from the agent's own live traces. It then writes
+`eval/run_eval.py` — the committed harness that calls the agent once per case with a linked
+trace — and asks before spending anything, because a run costs real judge and agent calls. It
+ends with the score, the report's browser URL, and the `/eval-fix` command to paste next.
+
+```
 /eval-fix oE1YMG5wqmu4j2bhTtw1X
 ```
 
@@ -107,9 +122,23 @@ recommendation against the code, applies what survived on a branch in a worktree
 at `eval-analysis/mapping-<id>.md`. Everything to that point is free; the re-run is not, so it
 asks first.
 
-Both open with one question about which engine to use — `http://localhost:4700` by default —
+```
+/auto-improve Xq3f9kLm2
+```
+
+The report id is the whole input; copy it from **Insights → Auto-improve** in the dashboard. An
+improvement report is the online version of an evaluation analysis: failures that online
+scorers flagged on production traffic and a reviewer **confirmed** by hand, clustered into
+issues with recommendations. The evidence is the strongest the engine has, and the
+recommendations were still written without seeing the code, so the skill works the report
+issue by issue with the same three verdicts `/eval-fix` uses — apply, already handled, reject —
+and delivers a triage table citing `file:line`. Verification is live: the same scorers keep
+running, and a fixed failure stops re-raising its signal. For a pre-deploy check, curate the
+confirmed failures into a dataset and hand it to `/run-eval`.
+
+All four open with one question about which engine to use — `http://localhost:4700` by default —
 because that address decides which database every number comes from, and it is invisible until
-something fails.
+something fails. They skip the question when `.env.agentx` already names one.
 
 ### Before you approve the re-run
 
@@ -141,15 +170,51 @@ finished and every result is stored with rating 0 — check the ratings, not the
 
 ## What's in here
 
-Everything is under `plugins/agentx/`.
+The plugin is `plugins/agentx/`, and every skill under it has the same shape: a `SKILL.md`
+that is the command, `references/` briefs it executes in order, and stdlib-only `scripts/`
+that talk to the engine. Paths below are relative to `plugins/agentx/skills/`.
 
 | Path | What it is |
 |---|---|
-| `skills/instrument/` | The `/instrument` slash command: where to trace and where not to, plus three scripts |
-| `skills/eval-fix/` | The `/eval-fix <id>` slash command: connecting to the engine, the triage brief, and the re-run brief |
+| `instrument/SKILL.md` | The `/instrument` command: what to trace, what not to, and the three silent failures |
+| `instrument/references/instrumentation-brief.md` | The core artifact — eight phases, from survey to a trace fetched back |
+| `instrument/references/preflight-brief.md` | The two checks before any SDK code is written: git state, and which project the key selects |
+| `instrument/scripts/detect_stack.py` | Framework, entry points and existing instrumentation, found with `ast` — never imports the repo |
+| `instrument/scripts/agentx_key.py` | Verified key resolution and project selection, written to `.env.agentx` at mode 0600 |
+| `instrument/scripts/verify_trace.py` | Proves the wiring without writing anything; `--check` grades the agent's own runs, `--capabilities` reports what the installed SDK supports |
+| `run-eval/SKILL.md` | The `/run-eval` command: id resolution, the dataset and evaluator pickers, and what it refuses to do |
+| `run-eval/references/run-brief.md` | Seven phases: orient, validate, harness, preflight, run, verify, hand off |
+| `run-eval/scripts/pick_eval.py` | Datasets and grading configs listed, and ids validated against this engine and project |
+| `run-eval/scripts/make_dataset.py` | Datasets created four ways — templates, JSON, CSV, or curated from live traces — idempotent by name |
+| `run-eval/templates/` | Three starter datasets: customer-support, rag-grounding, tool-use. Shape-checked in CI |
+| `eval-fix/SKILL.md` | The `/eval-fix <id>` command: from an id to a connected engine, and which brief to follow |
+| `eval-fix/references/engine-brief.md` | Which engine, how an address resolves, and the three failures that mean "wrong box" |
+| `eval-fix/references/triage-brief.md` | Recommendations checked against the source, verdict by verdict, ending at the mapping file |
+| `eval-fix/references/eval-brief.md` | The re-run on the same dataset, and the v1-vs-v2 comparison |
+| `eval-fix/scripts/fetch_analysis.py` | An evaluation and its AI Analysis pulled off the engine; `--list` doubles as the connection test |
+| `eval-fix/scripts/bootstrap.sh` | Makes the repo under test runnable from whichever manifest it finds — not only Python |
+| `auto-improve/SKILL.md` | The `/auto-improve <id>` command: the brief for working a report issue by issue, and how to verify against live traffic |
+| `auto-improve/scripts/fetch_report.py` | An improvement report pulled off the engine; `--list` shows every report, and says why there are none |
 
-Full detail on the tracing half is in [`plugins/agentx/README.md`](plugins/agentx/README.md).
-Each skill's `SKILL.md` is the reference for its own workflow.
+Every `scripts/url_guard.py` is the same file: the http/https allowlist a request passes through
+before a key rides along with it. Where a skill has an `evals/evals.json`, it is the case set the
+[skill-creator](https://github.com/anthropics/skills) evals run against.
+
+Around the plugin:
+
+| Path | What it is |
+|---|---|
+| `.claude-plugin/`, `.cursor-plugin/`, `.agents/plugins/` | One marketplace manifest per ecosystem, all pointing at the same plugin directory |
+| `plugins/agentx/.claude-plugin/`, `.codex-plugin/`, `.cursor-plugin/` | The plugin's own manifest, once per ecosystem, over one copy of the skills |
+| `tests/audit_skills.py` | Holds the docs against the code they tell an agent to run: every script, flag and SDK symbol a brief names has to exist |
+| `tests/test_audit_fires.py` | Breaks a copy of the repo in twenty-odd ways and requires the audit to catch each one by name |
+| `tests/test_runeval_scripts.py`, `test_live_link.py`, `test_live_grader_surface.py` | The run-eval scripts and the engine endpoints they depend on, live where an engine is reachable |
+| `skillevaluator-policy.yaml`, `tests/test_policy_keys.py` | The overlay for running NVIDIA SkillEvaluator locally, and the test that keeps it from quietly covering more than it says. Not a CI gate: the scanner is unpinned upstream and went red on a commit it had passed |
+| `.github/workflows/audit.yml` | Runs the tests above on push, on PRs, and weekly, so an SDK rename turns the repo red without waiting for a commit |
+
+Full detail on the tracing and evaluation half is in
+[`plugins/agentx/README.md`](plugins/agentx/README.md). Each skill's `SKILL.md` is the
+reference for its own workflow.
 
 ## Results
 
