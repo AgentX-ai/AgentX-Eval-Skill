@@ -1,6 +1,6 @@
 {
   "name": "agentx",
-  "version": "2.8.4",
+  "version": "2.9.0",
   "description": "Get your agent's real runs into AgentX, then score them, then turn what they measure into a code fix. /instrument sets up a Python agent and proves it with traces it reads back; /run-eval evaluates it against a dataset it can also create - templates, files, or cases curated from live traces; /eval-fix triages the evaluation against the source and re-runs it on the same dataset.",
   "author": {
     "name": "AgentX",
