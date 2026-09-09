@@ -30,9 +30,13 @@ that has none.
 
 The work is smaller than it looks, and its shape is easy to get wrong. A traced agent is:
 
-- **one span where a run begins** - the request handler, the task, the CLI main;
+- **one span where a run begins** - the request handler, the task, the CLI main, stating
+  `span_kind="agent"` (and `session_id` when the runs are turns of a conversation);
 - **one line of auto-instrumentation** for whatever calls the model;
-- **tool calls recorded** where the repo dispatches its own tools.
+- **tool calls, retrievals, and memory ops recorded** where the repo rolls its own - each
+  through the helper that states its kind (`trace_tool_call`, `trace_retrieval`,
+  `trace_memory`), because the timeline lanes, the RAG judges' `{context}`, and kind-aware
+  scorers all read the kind, not the name.
 
 Nesting is automatic. Any span opened while another is active becomes its child, and so does
 every call through a patched client. So decorating more functions does not produce a richer
@@ -95,7 +99,7 @@ Generate code against what that prints, not against a README.
 | 1 | Key into `.env.agentx`, dependency installed, SDK initialised once in an existing module |
 | 2 | One span at the entry point |
 | 3 | Auto-instrument the model client |
-| 4 | Tool calls, where the repo rolls its own |
+| 4 | Tool calls, retrievals, memory ops - the steps the repo rolls its own |
 | 5 | Deliberately leave the rest alone |
 | 6 | Prove the connection, then run the agent and grade its own traces |
 | 7 | Report what is traced and what is not, then offer `/agentx:run-eval` |
@@ -133,10 +137,12 @@ belongs in the project - and grade what it produced:
 | Are token counts present? | The model client is not auto-instrumented (Phase 3) |
 | Are tool calls recorded? | Phase 3's integration was built but never handed to the framework, or Phase 4 was skipped |
 | Do turns share a session? | `session_id` is not being passed, so every turn is its own conversation |
+| Do steps say what they are? | Every child span inferred as `chain` - no stated kinds, so the timeline cannot lane the steps (Phases 2 and 4) |
 
-The last two come back as **WARN**, not FAIL, and only FAIL moves the exit code. An agent with
-no tools should record no tool calls, and four independent one-shot runs should each have their
-own session - in the data those are indistinguishable from broken wiring. **A WARN is a question
+The last three come back as **WARN**, not FAIL, and only FAIL moves the exit code. An agent
+with no tools should record no tool calls, four independent one-shot runs should each have
+their own session, and a run with no distinct steps has nothing to kind - in the data all
+three are indistinguishable from broken wiring. **A WARN is a question
 addressed to you**, and you are the one who knows which kind of agent this is: read it against
 what the repo actually does and say which it was in the Phase 7 report.
 
@@ -279,6 +285,10 @@ Before calling it done, check the trace itself rather than the diff:
   `input` is a trace that cannot be evaluated later, only looked at.
 - **Do token counts appear?** If not, the model client is not auto-instrumented, and the run
   has no cost attached to it.
+- **Do the steps say what they are?** Child spans all reading `chain` means nothing stated a
+  kind - a retrieval the RAG judges cannot see, a memory read indistinguishable from glue.
+- **If the agent is conversational, do its turns share a session?** Multi-turn scoring
+  (Observe > Sessions, session judges) only exists for turns that share a `session_id`.
 - **Is anything traced that should not be?** Health probes, per-token callbacks and helper
   functions all crowd out the run they surround. The brief's Phase 5 is the list.
 - **Did secrets get in?** `input`, `output` and `metadata` are stored and read by judges.

@@ -228,7 +228,7 @@ Wrap the handler body, not the framework and not the whole file.
 ```python
 from myapp.config import tracer        # wherever Phase 1c initialised it
 
-@tracer.trace("support-agent", framework="langchain", model="gpt-4o")
+@tracer.trace("support-agent", framework="langchain", model="gpt-4o", span_kind="agent")
 def handle(query: str) -> str:
     return chain.invoke(query)
 ```
@@ -239,7 +239,7 @@ the time in a web handler:
 ```python
 @app.post("/chat")
 async def chat(body: ChatRequest):
-    with tracer.trace("support-agent", framework="langchain", session_id=body.thread_id) as span:
+    with tracer.trace("support-agent", framework="langchain", session_id=body.thread_id, span_kind="agent") as span:
         span.input = body.question          # the question, not the request object
         answer = await agent.run(body.question)
         span.output = answer                # the answer, not the response envelope
@@ -254,9 +254,32 @@ Four rules, each of which is a real trace someone has had to throw away:
 | **`input`/`output` are the question and the answer** | They are what a judge reads and what an evaluation scores. A serialised `Request` object is not an answer, and a trace full of them cannot be evaluated later. |
 | **`session_id` groups a conversation** | Multi-turn agents are scored as conversations on self-host - Observe > Sessions, and the session-coherence judge - and that only works if the turns share an id. Omit it and every turn is its own session. |
 | **`name` is the agent's identity** | One stable agent per distinct name, created on first use. Do not interpolate a user id or a timestamp into it, or the dashboard fills with thousands of one-trace agents. |
+| **`span_kind` says what the step is** | The timeline colours and filters by it, Code scorers branch on it, and the engine deliberately does NOT infer that a root span is an agent turn (a flat script's root IS the LLM call). An agentic entry point states `span_kind="agent"`; a flat one-LLM-call script can omit it - `model=` already classifies it as `llm`. The full vocabulary and the steps that state their own kind are in Phase 4. |
 
 Set `framework=` and `model=` when you know them. They cost nothing and they are what the
 dashboard groups and prices by.
+
+### One trace, or a multi-turn session?
+
+Decide this at Phase 2, because it cannot be fixed in the data later. **One trace is one run**:
+a request handled, a task completed, a CLI invocation. **A session is one conversation**: every
+turn a user has with the agent about the same thing, each turn its own trace, all sharing one
+`session_id`. What hangs on the distinction on self-host: Observe > Sessions lists
+conversations, and session-scoped judges and scorer groups score the WHOLE conversation
+(context retention, contradiction, resolution) once it goes idle - none of which can happen if
+every turn is its own session.
+
+| The repo looks like | Do |
+|---|---|
+| Chat endpoint / bot with a thread, conversation, or channel id | Pass it: `session_id=body.thread_id`. The id the repo already routes replies by is the session id. |
+| Chat loop in a CLI or notebook | Mint one id per loop entry (`session_id=f"cli-{uuid4()}"` **outside** the loop), reuse it for every turn inside. |
+| One-shot task, batch job, pipeline stage | No `session_id`. Independent runs are not a conversation, and forcing them into one session scores them as an incoherent conversation. |
+
+The two ways this goes wrong are mirror images: a **fresh id per request** (minted inside the
+handler) makes every turn its own session and multi-turn scoring never fires; a **constant id**
+(a module-level literal) merges every user into one endless conversation and the session judge
+reads strangers' questions as contradictions. The id must live exactly as long as the
+conversation does.
 
 ### Then flush on the way out, if the process is short-lived
 
@@ -328,7 +351,7 @@ Two things to know before wiring one up:
 
 ---
 
-## Phase 4 - Tool calls, where the repo rolls its own
+## Phase 4 - Tool calls, retrievals, memory - the steps the repo rolls its own
 
 Skip this entirely if a framework integration from Phase 3 is in play: it already records
 every tool the framework dispatches, and recording them again double-counts.
@@ -354,6 +377,56 @@ package (Phase 1b).
 **Trace the tool, not the helper.** `lookup_order` hitting a database is a tool call.
 `_format_order_line` is not, and a trace with forty spans of string formatting in it is
 harder to read than one with none.
+
+### Retrievals - the one kind with a behavioural consequence
+
+A hand-rolled RAG lookup (vector store, knowledge base, database) that a framework
+integration cannot see gets recorded as a retrieval:
+
+```python
+with tracer.trace_retrieval("kb_search", query=question) as r:
+    docs = store.similarity_search(question)
+    r.doc_count = len(docs)
+    r.output = docs
+```
+
+This is not a label. **The output of every retrieval span is what the RAG judges grade
+against as `{context}`** - Faithfulness and Context Relevancy read exactly those chunks. An
+agent that retrieves but never records it gets judged as if it made everything up; that is
+the single most common way a judge "concludes an agent has no retrieval when it plainly
+does."
+
+### Memory operations - state, not knowledge
+
+If the agent recalls or stores long-term state - user preferences, prior decisions, anything
+a Mem0/Zep/Letta-style store holds across conversations - record it as a **memory** step, not
+a retrieval and not a tool:
+
+```python
+with tracer.trace_memory("user prefs", operation="read", query=user_id) as m:
+    m.output = memory.search(user_id, question)
+
+with tracer.trace_memory("user prefs", operation="write", query=user_id) as m:
+    m.output = memory.add(user_id, new_fact)
+```
+
+The distinction is deliberate and matters to scoring: `{context}` means *knowledge the answer
+should be grounded in*, and a recalled preference is *state* - feeding it to a groundedness
+judge would penalize answers for not citing it. Memory steps get their own lane and filter in
+the Execution Timeline, and reads and writes share the kind with `operation` in metadata
+saying which. (`trace_memory` requires an SDK new enough to have it - `--capabilities` says;
+on an older SDK, `span.child_span(name, span_kind="memory", ...)` is the same statement.)
+
+### The full kind vocabulary, for everything else
+
+Steps recorded through the helpers above state their own kind (`tool`, `retrieval`,
+`memory`), as does every framework integration. Anything else worth marking takes
+`span_kind=` directly on `trace()`/`child_span()`:
+`agent`, `llm`, `tool`, `retrieval`, `chain`, `embedding`, `reranker`, `guardrail`,
+`evaluator`, `prompt`, `memory`. A **stated kind always beats the engine's inference** - a
+guardrail implemented as an LLM call would otherwise classify as `llm`. Do not go stamping
+`chain` on helpers to be thorough: `chain` is the fallback the engine infers anyway, and
+Phase 5 still applies - a step worth a kind is a step worth tracing, and nothing else is.
 
 ---
 
@@ -419,12 +492,14 @@ prove the write path with:
 | token counts present | FAIL | The model client is not auto-instrumented (Phase 3). |
 | tool calls recorded | WARN | The integration was constructed but never handed to the framework, or Phase 4 was skipped - unless the agent genuinely calls no tools. |
 | turns share a session | WARN | `session_id` is not being passed, so every turn is its own conversation (Phase 2) - unless these really were independent one-shot runs. |
+| steps say what they are | WARN | Every child span classified as `chain` - the steps never stated a kind, so the timeline cannot lane them and kind-aware scorers see mush. Phase 2's `span_kind="agent"` plus Phase 4's helpers are the fix - unless the run genuinely has no distinct steps. |
 
-Only FAIL moves the exit code, so a pass cannot be assumed from output nobody read. The two
+Only FAIL moves the exit code, so a pass cannot be assumed from output nobody read. The
 WARNs are the questions the traces cannot answer by themselves: no tool calls is correct for an
-agent with no tools, and one session per trace is correct for one-shot runs. **Both are
-identical in the data to the wiring being broken**, which is why they are neither green nor red
-- answer them from the repo, and say which it was in Phase 7.
+agent with no tools, one session per trace is correct for one-shot runs, and an all-`chain`
+step list is correct for a run with no real structure. **All are identical in the data to the
+wiring being broken**, which is why they are neither green nor red - answer them from the
+repo, and say which it was in Phase 7.
 
 Two more judgements no script makes for you:
 
