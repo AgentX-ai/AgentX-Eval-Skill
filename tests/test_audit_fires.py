@@ -135,8 +135,8 @@ def _(root):
 @case("trace() keyword not in the signature", "not a parameter", needs_sdk=True)
 def _(root):
     edit(root, f"{INSTRUMENT}/references/instrumentation-brief.md",
-         'tracer.trace("support-agent", framework="langchain", model="gpt-4o")',
-         'tracer.trace("support-agent", grouping="langchain", model="gpt-4o")')
+         'tracer.trace("support-agent", framework="langchain", model="gpt-4o", span_kind="agent")',
+         'tracer.trace("support-agent", grouping="langchain", model="gpt-4o", span_kind="agent")')
 
 # -- manifests --------------------------------------------------------------------------
 @case("version drift between ecosystems", "disagree on the version")

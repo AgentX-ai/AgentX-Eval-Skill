@@ -48,6 +48,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import List
@@ -108,6 +109,20 @@ def list_traces(base_url: str, api_key: str, limit: int = 25) -> List[dict]:
         if isinstance(body.get(field), list):
             return body[field]
     return []
+
+
+def list_session_spans(base_url: str, api_key: str, session_id: str) -> List[dict]:
+    """Every span of one session - the only route that returns child spans, so the step-kind
+    check can only grade traces that carry a session_id."""
+    quoted = urllib.parse.quote(session_id, safe="")
+    req = urllib.request.Request(checked_url(f"{base_url.rstrip('/')}/ingest/sessions/{quoted}/spans"))
+    req.add_header("x-api-key", api_key)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:  # nosec B310 - checked_url() allowlists the scheme
+            body = json.loads(resp.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, json.JSONDecodeError):
+        return []
+    return body.get("spans", []) if isinstance(body, dict) else []
 
 
 def looks_like_prose(value) -> bool:
@@ -182,6 +197,27 @@ def grade(traces: List[dict]) -> List[tuple]:
         status, detail = PASS, f"{len(traces)} turns in {len(sessions)} session(s)"
     checks.append((status, "session grouping", detail))
     return checks
+
+
+def grade_step_kinds(base_url: str, api_key: str, traces: List[dict]) -> tuple:
+    """Do the run's steps say what they are? Child spans that never stated a kind all classify
+    as `chain` - the timeline cannot lane them and kind-aware scorers (RAG {context}, memory)
+    see nothing. WARN-only: a run with no distinct steps legitimately has nothing to kind, and
+    only a sessioned trace exposes its children to this script at all."""
+    sessioned = next((t for t in traces if t.get("sessionId")), None)
+    if not sessioned:
+        return (WARN, "steps say what they are", "no sessioned trace to inspect - ungraded, not wrong")
+    spans = list_session_spans(base_url, api_key, sessioned["sessionId"])
+    children = [sp for sp in spans if sp.get("parentSpanId")]
+    if not children:
+        return (WARN, "steps say what they are",
+                "no child spans - right for a flat one-call agent, otherwise Phase 3/4 never ran")
+    kinds = sorted({(sp.get("spanKind") or "chain") for sp in children})
+    if kinds == ["chain"]:
+        return (WARN, "steps say what they are",
+                f"{len(children)} step(s), every one inferred as chain - state span_kind, or use "
+                "trace_tool_call / trace_retrieval / trace_memory (Phases 2 and 4)")
+    return (PASS, "steps say what they are", f"{len(children)} step(s): {', '.join(kinds)}")
 
 
 def report_capabilities() -> int:
@@ -294,6 +330,8 @@ def main() -> int:
                   if t.get("name") == args.check]
         print(f"\n{args.check!r} - what the agent's own runs recorded:", file=sys.stderr)
         checks = grade(traces)
+        if traces:
+            checks.append(grade_step_kinds(read_url, api_key, traces))
         for status, label, detail in checks:
             print(f"  {status}  {label:44} {detail}", file=sys.stderr)
         if root:
@@ -301,7 +339,7 @@ def main() -> int:
         failed = [c for c in checks if c[0] == FAIL]
         warned = [c for c in checks if c[0] == WARN]
         if warned and not failed:
-            print("\n  The WARNs are not failures - they are the two questions the traces cannot "
+            print("\n  The WARNs are not failures - they are questions the traces cannot "
                   "answer on their own. Read them against what this agent is meant to do.",
                   file=sys.stderr)
         print(json.dumps({
